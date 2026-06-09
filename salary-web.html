@@ -466,14 +466,15 @@ pages.dashboard=function(el){
 pages.salary=function(el){
   el.innerHTML=`
     <div class="card no-print">
-      <div class="card-title">シフト管理からデータ読み込み</div>
-      <div class="alert alert-info mb12">シフト管理アプリのデータから年月を選んで給与計算します。</div>
-      <div class="flex gap8 items-c mb12">
-        <select class="form-control" style="width:160px;" id="import-year-sel"></select>
-        <select class="form-control" style="width:120px;" id="import-month-sel"></select>
-        <button class="btn btn-primary" id="load-shift-btn">📥 シフトデータを読み込む</button>
+      <div class="card-title">売上報酬レポートCSV インポート</div>
+      <div class="alert alert-info mb12">スマレジ等からダウンロードした「売上報酬レポート」CSVを読み込みます。「月合計」行は自動除外されます。</div>
+      <div id="csv-drop-zone" style="border:2px dashed var(--border);border-radius:var(--r2);padding:28px;text-align:center;cursor:pointer;transition:.2s;" onclick="document.getElementById('csv-file-input').click()" ondragover="event.preventDefault();this.style.borderColor='var(--green)'" ondragleave="this.style.borderColor='var(--border)'" ondrop="handleCsvDrop(event)">
+        <input type="file" id="csv-file-input" accept=".csv" style="display:none" onchange="handleCsvFile(event)"/>
+        <div style="font-size:28px;margin-bottom:8px;">📂</div>
+        <div style="font-size:13px;color:var(--text2);">クリックまたはCSVをドロップ</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:4px;">売上報酬レポート_YYYYMM.csv</div>
       </div>
-      <div id="shift-load-status"></div>
+      <div id="csv-preview-area" class="mt12"></div>
     </div>
     <div class="card">
       <div class="card-title">給与計算一覧</div>
@@ -484,20 +485,6 @@ pages.salary=function(el){
       </div>
       <div id="salary-table"></div>
     </div>`;
-
-  // 年月セレクタ初期化
-  const now=new Date();
-  const ySel=el.querySelector('#import-year-sel');
-  const mSel=el.querySelector('#import-month-sel');
-  for(let y=now.getFullYear();y>=2023;y--){
-    const o=document.createElement('option');o.value=y;o.textContent=y+'年';
-    ySel.appendChild(o);
-  }
-  for(let m=1;m<=12;m++){
-    const o=document.createElement('option');o.value=String(m).padStart(2,'0');o.textContent=m+'月';
-    if(m===now.getMonth()+1)o.selected=true;
-    mSel.appendChild(o);
-  }
 
   // 月セレクタ
   const months=[...new Set(salaryDb.records.map(r=>r.month))].sort().reverse();
@@ -517,97 +504,98 @@ pages.salary=function(el){
     saveSalaryData();showPage('salary');
   });
 
-  el.querySelector('#load-shift-btn').addEventListener('click',async()=>{
-    const y=ySel.value;
-    const mo=mSel.value;
-    const targetMonth=`${y}-${mo}`;
-    const status=el.querySelector('#shift-load-status');
-    status.innerHTML='<div class="loading"><span class="spin"></span>シフトデータを取得中...</div>';
-
-    const sd=await loadShiftData();
-    if(!sd){status.innerHTML='<div class="alert alert-warn">シフト管理のデータが見つかりません。シフト管理アプリでデータを作成してください。</div>';return;}
-
-    // シフトデータ構造を解析
-    // シフト管理の records は {date, staffName, startTime, endTime, location, salesAmount, workHours, transport, route, ...}
-    const shiftRecs=extractShiftRecords(sd,targetMonth);
-    if(!shiftRecs.length){
-      status.innerHTML=`<div class="alert alert-warn">${formatMonth(targetMonth)}のシフトデータがありません。</div>`;
-      return;
-    }
-
-    const existing=salaryDb.records.filter(r=>r.month===targetMonth).length;
-    status.innerHTML=`
-      <div class="alert alert-success">${formatMonth(targetMonth)}から <strong>${shiftRecs.length}件</strong> のシフトデータを取得しました。</div>
-      ${existing?`<div class="alert alert-warn">⚠️ この月のデータが既に${existing}件あります。上書きインポートを選んでください。</div>`:''}
-      <div class="btn-group mt8">
-        <button class="btn btn-primary" id="do-import-btn">✅ インポート（追加）</button>
-        ${existing?`<button class="btn btn-amber" id="overwrite-import-btn">🔄 上書きインポート</button>`:''}
-      </div>
-      <div class="table-wrap mt8"><table>
-        <thead><tr><th>スタッフ</th><th>日付</th><th>場所</th><th class="tr">売上</th><th>勤務時間</th><th class="tr">交通費</th><th class="tr">計算給与</th></tr></thead>
-        <tbody>${shiftRecs.map(r=>{
-          const pay=calcPay(r);
-          const ss=getStaffSetting(r.staffName);
-          const typeCls=ss.isTraining?'badge-training':'badge-green';
-          const typeLabel=ss.isTraining?(r.trainingDay?'研修日給':'研修中'):ss.type||'歩合';
-          return `<tr><td>${esc(r.staffName)}</td><td>${r.date}</td><td>${esc(r.location||'')}</td><td class="tr">${formatMoney(r.salesAmount)}</td><td>${r.workHours||'-'}</td><td class="tr">${formatMoney(r.transport)}</td><td class="tr bold">${formatMoney(pay)}</td></tr>`;
-        }).join('')}
-        </tbody>
-      </table></div>`;
-
-    window._pendingShiftRecs=shiftRecs;
-    window._pendingMonth=targetMonth;
-
-    const doBtn=status.querySelector('#do-import-btn');
-    if(doBtn)doBtn.addEventListener('click',()=>doShiftImport(false));
-    const owBtn=status.querySelector('#overwrite-import-btn');
-    if(owBtn)owBtn.addEventListener('click',()=>doShiftImport(true));
-  });
 };
 
-function extractShiftRecords(sd,targetMonth){
-  // シフトデータの構造は users/{uid}/data/main
-  // 想定: sd.records=[] または sd.shifts=[] または sd.monthly など
-  // 複数の形式に対応
-  let recs=[];
-  if(sd.records&&Array.isArray(sd.records)){
-    recs=sd.records.filter(r=>{
-      const d=toISO(r.date||r.shiftDate||'');
-      return d.startsWith(targetMonth);
-    });
-  } else if(sd.shifts&&Array.isArray(sd.shifts)){
-    recs=sd.shifts.filter(r=>(r.date||'').startsWith(targetMonth));
-  } else {
-    // フラットな月別データ (monthly.YYYY-MM.staff[])
-    const monthly=sd.monthly||sd;
-    const monthData=monthly[targetMonth];
-    if(monthData&&Array.isArray(monthData)){recs=monthData;}
-    else if(monthData&&typeof monthData==='object'){
-      // {staffName: [{date,hours,...}]}
-      Object.entries(monthData).forEach(([name,arr])=>{
-        if(Array.isArray(arr))arr.forEach(e=>recs.push({...e,staffName:name}));
-      });
-    }
-  }
-  return recs.map(r=>({
-    id:salaryDb.nextId++,
-    month:targetMonth,
-    staffName:(r.staffName||r.name||r.staff||'').trim(),
-    date:toISO(r.date||r.shiftDate||''),
-    location:(r.location||r.place||r.venue||'').trim(),
-    salesAmount:Number((String(r.salesAmount||r.sales||0)).replace(/,/g,'')),
-    workHours:(r.workHours||r.hours||r.duration||'').trim(),
-    transport:Number((String(r.transport||r.fare||0)).replace(/,/g,'')),
-    route:(r.route||r.commute||'').trim(),
-    memo:(r.memo||r.note||'').trim(),
-    trainingDay:!!(r.trainingDay||r.training),
-    manualPay:undefined
-  })).filter(r=>r.staffName);
+// CSV処理
+window.handleCsvDrop=function(e){
+  e.preventDefault();
+  document.getElementById('csv-drop-zone').style.borderColor='var(--border)';
+  if(e.dataTransfer.files[0])processCsvFile(e.dataTransfer.files[0]);
+};
+window.handleCsvFile=function(e){if(e.target.files[0])processCsvFile(e.target.files[0]);};
+
+function processCsvFile(file){
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    try{
+      let text=ev.target.result;
+      if(text.charCodeAt(0)===0xFEFF)text=text.slice(1);
+      const rows=parseCSV(text);
+      // ヘッダー行スキップ・月合計行除外
+      const dataRows=rows.filter((r,i)=>i>0&&r[0]&&!r[0].includes('月合計')&&r[0].trim());
+      if(!dataRows.length){alert('有効なデータが見つかりません');return;}
+      const month=dataRows[0][1].slice(0,7);
+      const pending=dataRows.map(r=>csvRowToRecord(r,month));
+      const existing=salaryDb.records.filter(r=>r.month===month).length;
+
+      const prev=document.getElementById('csv-preview-area');
+      prev.innerHTML=`
+        <div class="alert alert-success">📅 ${formatMonth(month)} — ${pending.length}件 検出</div>
+        ${existing?`<div class="alert alert-warn">⚠️ この月のデータが既に${existing}件あります。</div>`:''}
+        <div class="btn-group mb12">
+          <button class="btn btn-primary" id="csv-add-btn">✅ 追加インポート</button>
+          ${existing?`<button class="btn btn-amber" id="csv-overwrite-btn">🔄 上書きインポート</button>`:''}
+          <button class="btn btn-outline" onclick="document.getElementById('csv-preview-area').innerHTML=''">キャンセル</button>
+        </div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>スタッフ</th><th>日付</th><th>場所</th><th class="tr">売上</th><th class="tr">交通費</th><th>給与タイプ</th><th class="tr">計算給与</th></tr></thead>
+          <tbody>${pending.map(r=>{
+            const ss=getStaffSetting(r.staffName);
+            const pay=calcPay(r);
+            const cls=ss.isTraining?'badge-training':'badge-green';
+            return `<tr><td>${esc(r.staffName)}</td><td>${r.date}</td><td>${esc(r.location)}</td><td class="tr">${formatMoney(r.salesAmount)}</td><td class="tr">${formatMoney(r.transport)}</td><td><span class="badge ${cls}">${ss.isTraining?'研修中':ss.type||'歩合'}</span></td><td class="tr bold">${formatMoney(pay)}</td></tr>`;
+          }).join('')}</tbody>
+        </table></div>`;
+
+      window._pendingCsvRecs=pending;
+      window._pendingCsvMonth=month;
+      prev.querySelector('#csv-add-btn').addEventListener('click',()=>doCsvImport(false));
+      const owBtn=prev.querySelector('#csv-overwrite-btn');
+      if(owBtn)owBtn.addEventListener('click',()=>doCsvImport(true));
+    }catch(e){alert('CSV読み込み失敗: '+e.message);}
+  };
+  reader.readAsText(file,'UTF-8');
 }
 
-function doShiftImport(overwrite){
-  const recs=window._pendingShiftRecs||[];
-  const month=window._pendingMonth||'';
+function parseCSV(text){
+  const rows=[];
+  for(const line of text.split(/?
+/)){
+    if(!line.trim())continue;
+    const cells=[];let inQ=false,cell='';
+    for(let i=0;i<line.length;i++){
+      const c=line[i];
+      if(c==='"'){inQ=!inQ;continue;}
+      if(c===','&&!inQ){cells.push(cell);cell='';continue;}
+      cell+=c;
+    }
+    cells.push(cell);rows.push(cells);
+  }
+  return rows;
+}
+
+function csvRowToRecord(r,month){
+  // 列: スタッフ,日付,販売場所,売上高,勤務時間,日給,交通費,合計,通勤経路,歩合率,最低保証額,時給,アラート
+  const isoDate=toISO((r[1]||'').trim());
+  return{
+    id:salaryDb.nextId++,
+    month:isoDate.slice(0,7)||month,
+    staffName:(r[0]||'').trim(),
+    date:isoDate,
+    location:(r[2]||'').trim(),
+    salesAmount:Number((r[3]||'0').replace(/,/g,'')),
+    workHours:(r[4]||'').trim(),
+    transport:Number((r[6]||'0').replace(/,/g,'')),
+    route:(r[8]||'').trim(),
+    memo:'',
+    trainingDay:false,
+    manualPay:undefined
+  };
+}
+
+function doCsvImport(overwrite){
+  const recs=window._pendingCsvRecs||[];
+  const month=window._pendingCsvMonth||'';
   if(!recs.length)return;
   if(overwrite)salaryDb.records=salaryDb.records.filter(r=>r.month!==month);
   salaryDb.records.push(...recs);
