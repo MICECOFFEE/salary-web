@@ -166,6 +166,7 @@ tfoot td{background:var(--surface2) !important;font-weight:700;}
       <div class="nav-item" data-page="staff"><span class="nav-icon">👥</span>スタッフ設定</div>
       <div class="nav-item" data-page="documents"><span class="nav-icon">📄</span>請求書・明細</div>
       <div class="nav-item" data-page="history"><span class="nav-icon">📈</span>履歴・集計</div>
+      <div class="nav-item" data-page="records"><span class="nav-icon">🗂️</span>全勤務履歴</div>
       <div class="nav-item" data-page="export"><span class="nav-icon">📤</span>収支へ連携</div>
       <div class="nav-item" data-page="company"><span class="nav-icon">🏢</span>会社情報</div>
     </nav>
@@ -180,6 +181,8 @@ tfoot td{background:var(--surface2) !important;font-weight:700;}
       <div class="flex gap8 items-c">
         <button class="btn btn-outline btn-sm" id="save-btn">💾 保存</button>
         <button class="btn btn-outline btn-sm" id="backup-btn">📤 バックアップ</button>
+        <button class="btn btn-outline btn-sm" id="restore-btn">📥 復元</button>
+        <input type="file" id="restore-file" accept=".json" style="display:none"/>
       </div>
     </div>
     <div class="content" id="content"><div class="loading"><span class="spin"></span>読み込み中...</div></div>
@@ -387,7 +390,7 @@ function toISO(s){
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 
 /* ---- PAGE ROUTER ---- */
-const PAGE_TITLES={dashboard:'ダッシュボード',salary:'給与計算',staff:'スタッフ設定',documents:'請求書・明細',history:'履歴・集計',export:'収支連携',company:'会社情報'};
+const PAGE_TITLES={dashboard:'ダッシュボード',salary:'給与計算',staff:'スタッフ設定',documents:'請求書・明細',history:'履歴・集計',records:'全勤務履歴',export:'収支連携',company:'会社情報'};
 
 function showPage(page){
   currentPage=page;
@@ -407,6 +410,26 @@ document.getElementById('backup-btn').addEventListener('click',()=>{
   a.href=URL.createObjectURL(new Blob([JSON.stringify(salaryDb,null,2)],{type:'application/json'}));
   a.download='salary_backup_'+new Date().toISOString().slice(0,10)+'.json';
   a.click();
+});
+document.getElementById('restore-btn').addEventListener('click',()=>{
+  document.getElementById('restore-file').click();
+});
+document.getElementById('restore-file').addEventListener('change',e=>{
+  const file=e.target.files[0];
+  if(!file)return;
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    try{
+      const data=JSON.parse(ev.target.result);
+      if(!confirm('現在のデータをJSONファイルで上書きします。よろしいですか？'))return;
+      salaryDb=Object.assign(defaultSalaryDb(),data);
+      saveSalaryData();
+      showToast('復元しました');
+      showPage(currentPage);
+    }catch(e){showToast('復元失敗: '+e.message,true);}
+  };
+  reader.readAsText(file);
+  e.target.value='';
 });
 
 const pages={};
@@ -1013,6 +1036,86 @@ function renderStaffHist(month){
   </table></div>`;
 }
 window.renderStaffHist=renderStaffHist;
+
+/* ========================
+   RECORDS (全勤務履歴)
+======================== */
+pages.records=function(el){
+  const months=[...new Set(salaryDb.records.map(r=>r.month))].sort().reverse();
+  const staffNames=[...new Set(salaryDb.records.map(r=>r.staffName))].sort();
+
+  el.innerHTML=`
+    <div class="card no-print">
+      <div class="card-title">絞り込み</div>
+      <div class="flex gap8 items-c flex-wrap">
+        <select class="form-control" style="width:160px;" id="rec-month-filter">
+          <option value="">全月</option>
+          ${months.map(m=>`<option value="${m}">${formatMonth(m)}</option>`).join('')}
+        </select>
+        <select class="form-control" style="width:140px;" id="rec-staff-filter">
+          <option value="">全スタッフ</option>
+          ${staffNames.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('')}
+        </select>
+        <input class="form-control" style="width:160px;" id="rec-loc-filter" placeholder="場所で検索"/>
+        <button class="btn btn-primary" id="rec-search-btn">🔍 絞り込み</button>
+        <button class="btn btn-outline" id="rec-reset-btn">リセット</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">勤務履歴一覧 <span id="rec-count" class="muted"></span></div>
+      <div id="rec-table"></div>
+    </div>`;
+
+  function renderRecords(){
+    const mf=document.getElementById('rec-month-filter').value;
+    const sf=document.getElementById('rec-staff-filter').value;
+    const lf=document.getElementById('rec-loc-filter').value.trim();
+    let recs=[...salaryDb.records];
+    if(mf)recs=recs.filter(r=>r.month===mf);
+    if(sf)recs=recs.filter(r=>r.staffName===sf);
+    if(lf)recs=recs.filter(r=>(r.location||'').includes(lf));
+    recs.sort((a,b)=>a.date<b.date?1:-1);
+
+    const totalPay=recs.reduce((s,r)=>s+getEffectivePay(r),0);
+    const totalTr=recs.reduce((s,r)=>s+(Number(r.transport)||0),0);
+    const totalSales=recs.reduce((s,r)=>s+(Number(r.salesAmount)||0),0);
+
+    document.getElementById('rec-count').textContent=recs.length+'件';
+    const tbl=document.getElementById('rec-table');
+    tbl.innerHTML=recs.length?`
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>月</th><th>日付</th><th>スタッフ</th><th>場所</th><th class="tr">売上</th><th class="tr">交通費</th><th class="tr">給与</th><th>備考</th></tr></thead>
+          <tbody>${recs.map(r=>`<tr>
+            <td><span class="badge badge-gray">${formatMonth(r.month)}</span></td>
+            <td>${r.date}</td>
+            <td><strong>${esc(r.staffName)}</strong></td>
+            <td>${esc(r.location||'')}</td>
+            <td class="tr">${formatMoney(r.salesAmount)}</td>
+            <td class="tr">${formatMoney(Number(r.transport)||0)}</td>
+            <td class="tr bold">${formatMoney(getEffectivePay(r))}</td>
+            <td class="muted">${esc(r.memo||'')}</td>
+          </tr>`).join('')}</tbody>
+          <tfoot><tr>
+            <td colspan="4" class="bold">合計 ${recs.length}件</td>
+            <td class="tr bold">${formatMoney(totalSales)}</td>
+            <td class="tr bold">${formatMoney(totalTr)}</td>
+            <td class="tr bold">${formatMoney(totalPay)}</td>
+            <td></td>
+          </tr></tfoot>
+        </table>
+      </div>`:'<p class="muted" style="padding:20px;text-align:center;">データがありません</p>';
+  }
+
+  renderRecords();
+  el.querySelector('#rec-search-btn').addEventListener('click',renderRecords);
+  el.querySelector('#rec-reset-btn').addEventListener('click',()=>{
+    document.getElementById('rec-month-filter').value='';
+    document.getElementById('rec-staff-filter').value='';
+    document.getElementById('rec-loc-filter').value='';
+    renderRecords();
+  });
+};
 
 /* ========================
    EXPORT TO PROFIT
