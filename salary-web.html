@@ -559,18 +559,26 @@ function processCsvFile(file){
 
 function parseCSV(text){
   const rows=[];
-  for(const line of text.split(/?
-/)){
-    if(!line.trim())continue;
+  let i=0,lineStart=0;
+  const addLine=s=>{
+    const line=s.trim();
+    if(!line)return;
     const cells=[];let inQ=false,cell='';
-    for(let i=0;i<line.length;i++){
-      const c=line[i];
+    for(let j=0;j<line.length;j++){
+      const c=line[j];
       if(c==='"'){inQ=!inQ;continue;}
       if(c===','&&!inQ){cells.push(cell);cell='';continue;}
       cell+=c;
     }
     cells.push(cell);rows.push(cells);
+  };
+  const CR=String.fromCharCode(13),LF=String.fromCharCode(10);
+  while(i<text.length){
+    if(text[i]===CR&&text[i+1]===LF){addLine(text.slice(lineStart,i));i+=2;lineStart=i;}
+    else if(text[i]===CR||text[i]===LF){addLine(text.slice(lineStart,i));i++;lineStart=i;}
+    else i++;
   }
+  if(lineStart<text.length)addLine(text.slice(lineStart));
   return rows;
 }
 
