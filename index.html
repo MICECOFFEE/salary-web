@@ -1,0 +1,1101 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>給与計算 | 100g COFFEE</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
+:root{
+  --bg:#F5F3EE;--surface:#FFFFFF;--surface2:#EFECE5;--border:#DDD8CC;
+  --text:#1A1814;--text2:#5C5648;--text3:#9A9080;
+  --green:#2A5C2E;--green-l:#4A8C4D;--green-bg:#EBF3EB;
+  --red:#B03020;--red-bg:#FAECEA;
+  --amber:#9A6A10;--amber-bg:#FDF3DC;
+  --blue:#1A3F80;--blue-bg:#EBF0F8;
+  --shadow:0 2px 8px rgba(26,24,20,.07);
+  --r:10px;--r2:14px;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--text);font-size:13px;min-height:100vh;}
+
+/* Layout */
+.app{display:flex;height:100vh;overflow:hidden;}
+.sidebar{width:200px;background:var(--text);color:#fff;display:flex;flex-direction:column;flex-shrink:0;}
+.logo{padding:18px 16px;border-bottom:1px solid rgba(255,255,255,.1);}
+.logo h1{font-size:12px;font-weight:700;line-height:1.6;color:#fff;}
+.logo p{font-size:10px;color:rgba(255,255,255,.4);margin-top:2px;}
+.nav{flex:1;padding:6px 0;overflow-y:auto;}
+.nav-item{display:flex;align-items:center;gap:9px;padding:9px 16px;cursor:pointer;font-size:12px;color:rgba(255,255,255,.6);transition:.15s;border-left:3px solid transparent;}
+.nav-item:hover{background:rgba(255,255,255,.07);color:#fff;}
+.nav-item.active{background:rgba(255,255,255,.11);color:#fff;border-left-color:#4A8C4D;}
+.nav-icon{font-size:14px;width:18px;text-align:center;}
+.main{flex:1;overflow-y:auto;display:flex;flex-direction:column;}
+.topbar{background:var(--surface);border-bottom:1px solid var(--border);padding:11px 22px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+.topbar-title{font-size:15px;font-weight:700;}
+.content{padding:22px;flex:1;}
+
+/* Auth */
+.auth-wrap{display:flex;align-items:center;justify-content:center;min-height:100vh;background:var(--bg);}
+.auth-card{background:var(--surface);border-radius:var(--r2);border:1px solid var(--border);padding:36px 32px;width:340px;box-shadow:var(--shadow);}
+.auth-card h2{font-size:18px;font-weight:700;margin-bottom:4px;}
+.auth-card p{font-size:12px;color:var(--text3);margin-bottom:24px;}
+.auth-err{background:var(--red-bg);color:var(--red);padding:9px 12px;border-radius:8px;font-size:12px;margin-bottom:12px;display:none;}
+
+/* Cards */
+.card{background:var(--surface);border-radius:var(--r2);border:1px solid var(--border);padding:18px;margin-bottom:14px;}
+.card-title{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:12px;}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;}
+
+/* Stat */
+.stat-card{background:var(--surface);border-radius:var(--r2);border:1px solid var(--border);padding:14px 18px;}
+.stat-label{font-size:10px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px;}
+.stat-value{font-size:20px;font-weight:700;font-family:'DM Mono',monospace;}
+.stat-sub{font-size:10px;color:var(--text3);margin-top:2px;}
+
+/* Form */
+.form-group{margin-bottom:12px;}
+.form-label{font-size:11px;font-weight:600;color:var(--text2);margin-bottom:4px;display:block;}
+.form-control{width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-size:12px;background:var(--surface);color:var(--text);font-family:inherit;}
+.form-control:focus{outline:none;border-color:var(--green);box-shadow:0 0 0 2px var(--green-bg);}
+textarea.form-control{resize:vertical;min-height:60px;}
+
+/* Buttons */
+.btn{padding:7px 14px;border-radius:8px;border:none;cursor:pointer;font-size:12px;font-weight:600;font-family:inherit;transition:.15s;display:inline-flex;align-items:center;gap:5px;}
+.btn-primary{background:var(--green);color:#fff;}.btn-primary:hover{background:var(--green-l);}
+.btn-outline{background:transparent;border:1px solid var(--border);color:var(--text2);}.btn-outline:hover{background:var(--surface2);}
+.btn-red{background:var(--red);color:#fff;}
+.btn-amber{background:var(--amber);color:#fff;}
+.btn-blue{background:var(--blue);color:#fff;}
+.btn-sm{padding:4px 10px;font-size:11px;}
+.btn-lg{padding:10px 20px;font-size:13px;}
+.btn-group{display:flex;gap:7px;flex-wrap:wrap;}
+
+/* Table */
+.table-wrap{overflow-x:auto;}
+table{width:100%;border-collapse:collapse;font-size:12px;}
+th{background:var(--surface2);padding:7px 9px;text-align:left;font-size:10px;font-weight:700;color:var(--text2);white-space:nowrap;border-bottom:1px solid var(--border);}
+td{padding:7px 9px;border-bottom:1px solid var(--border);vertical-align:middle;}
+tr:last-child td{border-bottom:none;}
+tr:hover td{background:var(--surface2);}
+tfoot td{background:var(--surface2) !important;font-weight:700;}
+
+/* Badges */
+.badge{display:inline-flex;align-items:center;padding:2px 7px;border-radius:99px;font-size:10px;font-weight:600;}
+.badge-green{background:var(--green-bg);color:var(--green);}
+.badge-red{background:var(--red-bg);color:var(--red);}
+.badge-amber{background:var(--amber-bg);color:var(--amber);}
+.badge-blue{background:var(--blue-bg);color:var(--blue);}
+.badge-gray{background:var(--surface2);color:var(--text3);}
+
+/* Alert */
+.alert{padding:9px 12px;border-radius:8px;font-size:12px;margin-bottom:10px;}
+.alert-info{background:var(--blue-bg);color:var(--blue);}
+.alert-warn{background:var(--amber-bg);color:var(--amber);}
+.alert-success{background:var(--green-bg);color:var(--green);}
+
+/* Modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;}
+.modal{background:var(--surface);border-radius:var(--r2);width:100%;max-width:560px;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.25);}
+.modal-header{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+.modal-title{font-size:14px;font-weight:700;}
+.modal-close{background:none;border:none;font-size:18px;cursor:pointer;color:var(--text3);}
+.modal-body{padding:20px;}
+.modal-footer{padding:12px 20px;border-top:1px solid var(--border);display:flex;gap:7px;justify-content:flex-end;}
+
+/* Misc */
+.divider{height:1px;background:var(--border);margin:12px 0;}
+.muted{color:var(--text3);font-size:11px;}
+.tr{text-align:right;}
+.bold{font-weight:700;}
+.flex{display:flex;}.items-c{align-items:center;}.gap8{gap:8px;}.ml-a{margin-left:auto;}
+.mt8{margin-top:8px;}.mt12{margin-top:12px;}.mb8{margin-bottom:8px;}.mb12{margin-bottom:12px;}
+.loading{display:flex;align-items:center;justify-content:center;padding:40px;color:var(--text3);font-size:13px;gap:8px;}
+.spin{display:inline-block;width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--green);border-radius:50%;animation:spin .7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Editable input */
+.edit-input{border:1px solid transparent;border-radius:6px;padding:3px 6px;background:transparent;font-family:'DM Mono',monospace;font-size:12px;width:100%;text-align:right;}
+.edit-input:hover{border-color:var(--border);}
+.edit-input:focus{outline:none;border-color:var(--green);background:var(--green-bg);}
+
+/* Training badge */
+.badge-training{background:#F0E6FA;color:#6B2FA0;}
+
+/* Print */
+@media print{
+  .app{display:block;height:auto;}
+  .sidebar,.topbar,.no-print{display:none!important;}
+  .main{overflow:visible;}
+  .content{padding:0;}
+  body{background:#fff;font-size:11px;}
+  @page{size:A4;margin:15mm;}
+}
+</style>
+</head>
+<body>
+
+<!-- AUTH -->
+<div id="auth-screen" class="auth-wrap" style="display:none;">
+  <div class="auth-card">
+    <h2>💰 給与計算</h2>
+    <p>100g COFFEE — ログインしてください</p>
+    <div class="auth-err" id="auth-err"></div>
+    <button id="google-login-btn" class="btn" style="width:100%;justify-content:center;background:#fff;border:1px solid var(--border);color:var(--text);font-size:13px;padding:10px;gap:8px;">
+      <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" style="width:18px;height:18px;"/>
+      Googleでログイン
+    </button>
+    <div style="text-align:center;color:var(--text3);font-size:11px;margin:12px 0;">— またはメールで —</div>
+    <div class="form-group"><label class="form-label">メールアドレス</label><input class="form-control" type="email" id="auth-email" placeholder="example@email.com"/></div>
+    <div class="form-group"><label class="form-label">パスワード</label><input class="form-control" type="password" id="auth-pass" placeholder="••••••••"/></div>
+    <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:4px;" id="login-btn">メールでログイン</button>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div class="app" id="app-screen" style="display:none;">
+  <div class="sidebar">
+    <div class="logo">
+      <h1>💰 給与計算<br>管理システム</h1>
+      <p>100g COFFEE</p>
+    </div>
+    <nav class="nav" id="sidebar-nav">
+      <div class="nav-item active" data-page="dashboard"><span class="nav-icon">📊</span>ダッシュボード</div>
+      <div class="nav-item" data-page="salary"><span class="nav-icon">💴</span>給与計算</div>
+      <div class="nav-item" data-page="staff"><span class="nav-icon">👥</span>スタッフ設定</div>
+      <div class="nav-item" data-page="documents"><span class="nav-icon">📄</span>請求書・明細</div>
+      <div class="nav-item" data-page="history"><span class="nav-icon">📈</span>履歴・集計</div>
+      <div class="nav-item" data-page="export"><span class="nav-icon">📤</span>収支へ連携</div>
+      <div class="nav-item" data-page="company"><span class="nav-icon">🏢</span>会社情報</div>
+    </nav>
+    <div style="padding:12px 16px;border-top:1px solid rgba(255,255,255,.1);">
+      <div style="font-size:10px;color:rgba(255,255,255,.35);margin-bottom:6px;" id="user-email-label"></div>
+      <button class="btn btn-outline btn-sm" style="width:100%;justify-content:center;color:rgba(255,255,255,.6);border-color:rgba(255,255,255,.2);" id="logout-btn">ログアウト</button>
+    </div>
+  </div>
+  <div class="main">
+    <div class="topbar">
+      <div class="topbar-title" id="page-title">ダッシュボード</div>
+      <div class="flex gap8 items-c">
+        <button class="btn btn-outline btn-sm" id="save-btn">💾 保存</button>
+        <button class="btn btn-outline btn-sm" id="backup-btn">📤 バックアップ</button>
+      </div>
+    </div>
+    <div class="content" id="content"><div class="loading"><span class="spin"></span>読み込み中...</div></div>
+  </div>
+</div>
+
+<!-- MODAL -->
+<div class="modal-overlay" id="modal" style="display:none;" onclick="closeModalOuter(event)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-title"></div>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+    <div class="modal-footer" id="modal-footer"></div>
+  </div>
+</div>
+
+<!-- Firebase -->
+<script type="module">
+import{initializeApp}from'https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js';
+import{getAuth,signInWithEmailAndPassword,signOut,onAuthStateChanged,GoogleAuthProvider,signInWithPopup}from'https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js';
+import{getFirestore,doc,getDoc,setDoc}from'https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js';
+
+const FB={apiKey:"AIzaSyCNxDr8wqq-dIfI7ns9mZ6GySQkP0qAN1I",authDomain:"shift-app-920a1.firebaseapp.com",projectId:"shift-app-920a1",storageBucket:"shift-app-920a1.firebasestorage.app",messagingSenderId:"393055910720",appId:"1:393055910720:web:97b30c30b3f3b85ba758a5"};
+const app=initializeApp(FB);
+const auth=getAuth(app);
+const db=getFirestore(app);
+
+/* ---- STATE ---- */
+let uid=null;
+let salaryDb=defaultSalaryDb();
+let shiftData=null; // シフト管理からのデータキャッシュ
+let currentPage='dashboard';
+
+function defaultSalaryDb(){
+  return{
+    company:{name:'株式会社 100g COFFEE',postal:'',address:'',tel:'',email:'',bank:'',invoiceNo:''},
+    staffSettings:{},
+    records:[],    // {id,month,staffName,date,location,salesAmount,workHours,transport,route,memo,manualPay,trainingDay}
+    nextId:1
+  };
+}
+
+/* ---- AUTH ---- */
+onAuthStateChanged(auth,u=>{
+  if(u){
+    uid=u.uid;
+    document.getElementById('auth-screen').style.display='none';
+    document.getElementById('app-screen').style.display='flex';
+    document.getElementById('user-email-label').textContent=u.email;
+    loadSalaryData();
+  }else{
+    uid=null;
+    document.getElementById('auth-screen').style.display='flex';
+    document.getElementById('app-screen').style.display='none';
+  }
+});
+
+document.getElementById('google-login-btn').addEventListener('click',async()=>{
+  const err=document.getElementById('auth-err');
+  err.style.display='none';
+  try{
+    const provider=new GoogleAuthProvider();
+    await signInWithPopup(auth,provider);
+  }catch(e){err.textContent='Googleログイン失敗: '+e.message;err.style.display='block';}
+});
+document.getElementById('login-btn').addEventListener('click',async()=>{
+  const email=document.getElementById('auth-email').value.trim();
+  const pass=document.getElementById('auth-pass').value;
+  const err=document.getElementById('auth-err');
+  err.style.display='none';
+  try{await signInWithEmailAndPassword(auth,email,pass);}
+  catch(e){err.textContent='ログインできません: '+e.message;err.style.display='block';}
+});
+document.getElementById('logout-btn').addEventListener('click',()=>signOut(auth));
+
+/* ---- FIRESTORE ---- */
+async function loadSalaryData(){
+  try{
+    const ref=doc(db,`salary_users/${uid}/data/main`);
+    const snap=await getDoc(ref);
+    if(snap.exists()){
+      const d=snap.data();
+      salaryDb=Object.assign(defaultSalaryDb(),d);
+      if(!salaryDb.company)salaryDb.company={};
+      if(!salaryDb.staffSettings)salaryDb.staffSettings={};
+      if(!salaryDb.records)salaryDb.records=[];
+    }
+  }catch(e){console.error(e);}
+  showPage('dashboard');
+}
+
+async function saveSalaryData(){
+  if(!uid)return;
+  try{
+    await setDoc(doc(db,`salary_users/${uid}/data/main`),JSON.parse(JSON.stringify(salaryDb)));
+    showToast('Firestoreに保存しました');
+  }catch(e){showToast('保存失敗: '+e.message,true);}
+}
+
+// シフト管理からデータ取得
+async function loadShiftData(){
+  if(!uid)return null;
+  try{
+    const snap=await getDoc(doc(db,`users/${uid}/data/main`));
+    if(snap.exists()){shiftData=snap.data();return shiftData;}
+  }catch(e){console.error(e);}
+  return null;
+}
+
+// 収支分析へ給与データ連携
+async function exportToProfit(month){
+  if(!uid)return;
+  const recs=salaryDb.records.filter(r=>r.month===month);
+  if(!recs.length){alert('データがありません');return;}
+  const totalPay=recs.reduce((s,r)=>s+getEffectivePay(r),0);
+  const totalTr=recs.reduce((s,r)=>s+(Number(r.transport)||0),0);
+  const total=totalPay+totalTr;
+
+  try{
+    const profRef=doc(db,`profit_users/${uid}/data/main`);
+    const snap=await getDoc(profRef);
+    let profDb=snap.exists()?snap.data():{expenses:[],revenues:[],nextId:1};
+    if(!profDb.expenses)profDb.expenses=[];
+    if(!profDb.nextId)profDb.nextId=1;
+
+    // 既存の同月給与エントリを削除
+    profDb.expenses=profDb.expenses.filter(e=>!(e.category==='人件費'&&e.month===month));
+
+    // スタッフ別に追加
+    const staffList=[...new Set(recs.map(r=>r.staffName))];
+    staffList.forEach(name=>{
+      const sr=recs.filter(r=>r.staffName===name);
+      const pay=sr.reduce((s,r)=>s+getEffectivePay(r),0);
+      const tr=sr.reduce((s,r)=>s+(Number(r.transport)||0),0);
+      profDb.expenses.push({
+        id:profDb.nextId++,
+        month,
+        date:month+'-01',
+        category:'人件費',
+        memo:name+' 給与',
+        amount:pay+tr,
+        source:'salary_app'
+      });
+    });
+    await setDoc(profRef,profDb);
+    showToast(formatMonth(month)+'の給与データを収支分析に連携しました');
+  }catch(e){alert('連携失敗: '+e.message);}
+}
+
+/* ---- SALARY CALC ---- */
+function getStaffSetting(name){
+  const def={type:'歩合',rate:20,minAmount:10000,hourlyRate:1400,trainingRate:0,trainingDayRate:8000,isTraining:false,employment:'外部委託',bankName:'',bankBranch:'',bankType:'普通',bankNo:'',bankHolder:'',fixedItems:[]};
+  return Object.assign({},def,salaryDb.staffSettings[name]||{});
+}
+
+function calcPay(record){
+  const s=getStaffSetting(record.staffName);
+  // 研修中の日は研修日給を使用
+  if(record.trainingDay&&s.isTraining){
+    return Number(s.trainingDayRate)||8000;
+  }
+  const type=s.type||'歩合';
+  const sales=Number(record.salesAmount)||0;
+  const rate=(Number(s.rate)||20)/100;
+  const min=Number(s.minAmount)||10000;
+  const hourly=Number(s.hourlyRate)||1400;
+  if(type==='歩合')return Math.round(sales*rate);
+  if(type==='最低保証')return Math.max(Math.round(sales*rate),min);
+  if(type==='時給'){const h=parseWorkHours(record.workHours);return Math.round(h*hourly);}
+  return 0;
+}
+
+function getEffectivePay(record){
+  // manualPayが設定されていれば手動値を使用
+  if(record.manualPay!==undefined&&record.manualPay!==null&&record.manualPay!=='')
+    return Number(record.manualPay);
+  return calcPay(record);
+}
+
+function parseWorkHours(str){
+  if(!str||str==='-'||str==='')return 0;
+  const s=String(str).trim();
+  const m=s.match(/^(\d+):(\d+)$/);
+  if(m){return parseInt(m[1])+Math.floor(parseInt(m[2])/15)*15/60;}
+  const h=parseFloat(s);
+  if(!isNaN(h)&&h>0){const t=Math.round(h*60);return Math.floor(t/15)*15/60;}
+  return 0;
+}
+
+function formatMoney(n){return '¥'+(Math.round(n)||0).toLocaleString();}
+function formatMonth(m){
+  if(!m)return '';
+  const p=m.match(/^(\d{4})[\/\-](\d{1,2})$/);
+  if(p)return p[1]+'年'+String(p[2]).padStart(2,'0')+'月';
+  return m;
+}
+function toISO(s){
+  if(!s)return '';
+  const m=s.match(/(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+  if(m)return m[1]+'-'+m[2].padStart(2,'0')+'-'+m[3].padStart(2,'0');
+  return s;
+}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+/* ---- PAGE ROUTER ---- */
+const PAGE_TITLES={dashboard:'ダッシュボード',salary:'給与計算',staff:'スタッフ設定',documents:'請求書・明細',history:'履歴・集計',export:'収支連携',company:'会社情報'};
+
+function showPage(page){
+  currentPage=page;
+  document.getElementById('page-title').textContent=PAGE_TITLES[page]||page;
+  document.querySelectorAll('.nav-item').forEach(el=>el.classList.toggle('active',el.dataset.page===page));
+  const c=document.getElementById('content');
+  c.innerHTML='';
+  if(pages[page])pages[page](c);
+}
+document.getElementById('sidebar-nav').addEventListener('click',e=>{
+  const item=e.target.closest('.nav-item');
+  if(item)showPage(item.dataset.page);
+});
+document.getElementById('save-btn').addEventListener('click',saveSalaryData);
+document.getElementById('backup-btn').addEventListener('click',()=>{
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([JSON.stringify(salaryDb,null,2)],{type:'application/json'}));
+  a.download='salary_backup_'+new Date().toISOString().slice(0,10)+'.json';
+  a.click();
+});
+
+const pages={};
+
+/* ========================
+   DASHBOARD
+======================== */
+pages.dashboard=function(el){
+  const months=[...new Set(salaryDb.records.map(r=>r.month))].sort().reverse();
+  const m=months[0]||'';
+  const recs=salaryDb.records.filter(r=>r.month===m);
+  const staffList=[...new Set(recs.map(r=>r.staffName))];
+  const totalPay=recs.reduce((s,r)=>s+getEffectivePay(r),0);
+  const totalTr=recs.reduce((s,r)=>s+(Number(r.transport)||0),0);
+
+  el.innerHTML=`
+    ${m?`<div class="alert alert-success mb12">最新データ: <strong>${formatMonth(m)}</strong></div>`:`<div class="alert alert-warn mb12">シフト管理からデータを読み込んでください</div>`}
+    <div class="grid3 mb12">
+      <div class="stat-card"><div class="stat-label">支給総額</div><div class="stat-value">${formatMoney(totalPay+totalTr)}</div><div class="stat-sub">給与 ${formatMoney(totalPay)} + 交通費 ${formatMoney(totalTr)}</div></div>
+      <div class="stat-card"><div class="stat-label">スタッフ数</div><div class="stat-value">${staffList.length}<span style="font-size:13px;font-weight:400;"> 名</span></div><div class="stat-sub">${m||'—'}</div></div>
+      <div class="stat-card"><div class="stat-label">出勤件数</div><div class="stat-value">${recs.length}<span style="font-size:13px;font-weight:400;"> 件</span></div><div class="stat-sub">延べ日数</div></div>
+    </div>
+    <div class="card">
+      <div class="card-title">スタッフ別サマリー（${m?formatMonth(m):'—'}）</div>
+      ${staffList.length?`<div class="table-wrap"><table>
+        <thead><tr><th>スタッフ</th><th>タイプ</th><th>雇用</th><th class="tr">給与</th><th class="tr">交通費</th><th class="tr">合計</th><th>書類</th></tr></thead>
+        <tbody>${staffList.map(name=>{
+          const sr=recs.filter(r=>r.staffName===name);
+          const pay=sr.reduce((s,r)=>s+getEffectivePay(r),0);
+          const tr=sr.reduce((s,r)=>s+(Number(r.transport)||0),0);
+          const ss=getStaffSetting(name);
+          const typeCls=ss.isTraining?'badge-training':'badge-green';
+          const typeLabel=ss.isTraining?'研修中':ss.type||'歩合';
+          return `<tr><td><strong>${esc(name)}</strong></td><td><span class="badge ${typeCls}">${typeLabel}</span></td><td><span class="badge ${ss.employment==='会社採用'?'badge-blue':'badge-amber'}">${ss.employment||'外部委託'}</span></td><td class="tr bold">${formatMoney(pay)}</td><td class="tr">${formatMoney(tr)}</td><td class="tr bold">${formatMoney(pay+tr)}</td><td><button class="btn btn-outline btn-sm doc-btn" data-name="${esc(name)}" data-month="${m}">明細</button></td></tr>`;
+        }).join('')}</tbody>
+      </table></div>`:`<p class="muted" style="text-align:center;padding:20px;">データがありません</p>`}
+    </div>
+    <div class="card">
+      <div class="card-title">クイックアクセス</div>
+      <div class="btn-group">
+        <button class="btn btn-primary" data-page="salary">📥 シフトから読み込む</button>
+        <button class="btn btn-outline" data-page="staff">👥 スタッフ設定</button>
+        <button class="btn btn-outline" data-page="export">📤 収支へ連携</button>
+      </div>
+    </div>`;
+
+  el.querySelectorAll('[data-page]').forEach(b=>b.addEventListener('click',()=>showPage(b.dataset.page)));
+  el.querySelectorAll('.doc-btn').forEach(b=>b.addEventListener('click',()=>{
+    window._docPreset={name:b.dataset.name,month:b.dataset.month};
+    showPage('documents');
+  }));
+};
+
+/* ========================
+   SALARY (シフト読み込み + 給与計算)
+======================== */
+pages.salary=function(el){
+  el.innerHTML=`
+    <div class="card no-print">
+      <div class="card-title">売上報酬レポートCSV インポート</div>
+      <div class="alert alert-info mb12">スマレジ等からダウンロードした「売上報酬レポート」CSVを読み込みます。「月合計」行は自動除外されます。</div>
+      <div id="csv-drop-zone" style="border:2px dashed var(--border);border-radius:var(--r2);padding:28px;text-align:center;cursor:pointer;transition:.2s;" onclick="document.getElementById('csv-file-input').click()" ondragover="event.preventDefault();this.style.borderColor='var(--green)'" ondragleave="this.style.borderColor='var(--border)'" ondrop="handleCsvDrop(event)">
+        <input type="file" id="csv-file-input" accept=".csv" style="display:none" onchange="handleCsvFile(event)"/>
+        <div style="font-size:28px;margin-bottom:8px;">📂</div>
+        <div style="font-size:13px;color:var(--text2);">クリックまたはCSVをドロップ</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:4px;">売上報酬レポート_YYYYMM.csv</div>
+      </div>
+      <div id="csv-preview-area" class="mt12"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">給与計算一覧</div>
+      <div class="flex gap8 items-c mb12">
+        <select class="form-control" style="width:160px;" id="sal-month-sel"></select>
+        <button class="btn btn-outline btn-sm" id="add-rec-btn">＋ 手動追加</button>
+        <button class="btn btn-red btn-sm ml-a" id="clear-month-btn">🗑 この月削除</button>
+      </div>
+      <div id="salary-table"></div>
+    </div>`;
+
+  // 月セレクタ
+  const months=[...new Set(salaryDb.records.map(r=>r.month))].sort().reverse();
+  const salMonSel=el.querySelector('#sal-month-sel');
+  months.forEach(m=>{
+    const o=document.createElement('option');o.value=m;o.textContent=formatMonth(m);
+    salMonSel.appendChild(o);
+  });
+  if(months.length)renderSalaryTable(months[0]);
+
+  salMonSel.addEventListener('change',()=>renderSalaryTable(salMonSel.value));
+  el.querySelector('#add-rec-btn').addEventListener('click',()=>addRecord(salMonSel.value||''));
+  el.querySelector('#clear-month-btn').addEventListener('click',()=>{
+    const m=salMonSel.value;
+    if(!m||!confirm(formatMonth(m)+'のデータを全て削除しますか？'))return;
+    salaryDb.records=salaryDb.records.filter(r=>r.month!==m);
+    saveSalaryData();showPage('salary');
+  });
+
+};
+
+// CSV処理
+window.handleCsvDrop=function(e){
+  e.preventDefault();
+  document.getElementById('csv-drop-zone').style.borderColor='var(--border)';
+  if(e.dataTransfer.files[0])processCsvFile(e.dataTransfer.files[0]);
+};
+window.handleCsvFile=function(e){if(e.target.files[0])processCsvFile(e.target.files[0]);};
+
+function processCsvFile(file){
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    try{
+      let text=ev.target.result;
+      if(text.charCodeAt(0)===0xFEFF)text=text.slice(1);
+      const rows=parseCSV(text);
+      // ヘッダー行スキップ・月合計行除外
+      const dataRows=rows.filter((r,i)=>i>0&&r[0]&&!r[0].includes('月合計')&&r[0].trim());
+      if(!dataRows.length){alert('有効なデータが見つかりません');return;}
+      const month=dataRows[0][1].slice(0,7);
+      const pending=dataRows.map(r=>csvRowToRecord(r,month));
+      const existing=salaryDb.records.filter(r=>r.month===month).length;
+
+      const prev=document.getElementById('csv-preview-area');
+      prev.innerHTML=`
+        <div class="alert alert-success">📅 ${formatMonth(month)} — ${pending.length}件 検出</div>
+        ${existing?`<div class="alert alert-warn">⚠️ この月のデータが既に${existing}件あります。</div>`:''}
+        <div class="btn-group mb12">
+          <button class="btn btn-primary" id="csv-add-btn">✅ 追加インポート</button>
+          ${existing?`<button class="btn btn-amber" id="csv-overwrite-btn">🔄 上書きインポート</button>`:''}
+          <button class="btn btn-outline" onclick="document.getElementById('csv-preview-area').innerHTML=''">キャンセル</button>
+        </div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>スタッフ</th><th>日付</th><th>場所</th><th class="tr">売上</th><th class="tr">交通費</th><th>給与タイプ</th><th class="tr">計算給与</th></tr></thead>
+          <tbody>${pending.map(r=>{
+            const ss=getStaffSetting(r.staffName);
+            const pay=calcPay(r);
+            const cls=ss.isTraining?'badge-training':'badge-green';
+            return `<tr><td>${esc(r.staffName)}</td><td>${r.date}</td><td>${esc(r.location)}</td><td class="tr">${formatMoney(r.salesAmount)}</td><td class="tr">${formatMoney(r.transport)}</td><td><span class="badge ${cls}">${ss.isTraining?'研修中':ss.type||'歩合'}</span></td><td class="tr bold">${formatMoney(pay)}</td></tr>`;
+          }).join('')}</tbody>
+        </table></div>`;
+
+      window._pendingCsvRecs=pending;
+      window._pendingCsvMonth=month;
+      prev.querySelector('#csv-add-btn').addEventListener('click',()=>doCsvImport(false));
+      const owBtn=prev.querySelector('#csv-overwrite-btn');
+      if(owBtn)owBtn.addEventListener('click',()=>doCsvImport(true));
+    }catch(e){alert('CSV読み込み失敗: '+e.message);}
+  };
+  reader.readAsText(file,'UTF-8');
+}
+
+function parseCSV(text){
+  const rows=[];
+  let i=0,lineStart=0;
+  const addLine=s=>{
+    const line=s.trim();
+    if(!line)return;
+    const cells=[];let inQ=false,cell='';
+    for(let j=0;j<line.length;j++){
+      const c=line[j];
+      if(c==='"'){inQ=!inQ;continue;}
+      if(c===','&&!inQ){cells.push(cell);cell='';continue;}
+      cell+=c;
+    }
+    cells.push(cell);rows.push(cells);
+  };
+  const CR=String.fromCharCode(13),LF=String.fromCharCode(10);
+  while(i<text.length){
+    if(text[i]===CR&&text[i+1]===LF){addLine(text.slice(lineStart,i));i+=2;lineStart=i;}
+    else if(text[i]===CR||text[i]===LF){addLine(text.slice(lineStart,i));i++;lineStart=i;}
+    else i++;
+  }
+  if(lineStart<text.length)addLine(text.slice(lineStart));
+  return rows;
+}
+
+function csvRowToRecord(r,month){
+  // 列: スタッフ,日付,販売場所,売上高,勤務時間,日給,交通費,合計,通勤経路,歩合率,最低保証額,時給,アラート
+  const isoDate=toISO((r[1]||'').trim());
+  return{
+    id:salaryDb.nextId++,
+    month:isoDate.slice(0,7)||month,
+    staffName:(r[0]||'').trim(),
+    date:isoDate,
+    location:(r[2]||'').trim(),
+    salesAmount:Number((r[3]||'0').replace(/,/g,'')),
+    workHours:(r[4]||'').trim(),
+    transport:Number((r[6]||'0').replace(/,/g,'')),
+    route:(r[8]||'').trim(),
+    memo:'',
+    trainingDay:false,
+    manualPay:undefined
+  };
+}
+
+function doCsvImport(overwrite){
+  const recs=window._pendingCsvRecs||[];
+  const month=window._pendingCsvMonth||'';
+  if(!recs.length)return;
+  if(overwrite)salaryDb.records=salaryDb.records.filter(r=>r.month!==month);
+  salaryDb.records.push(...recs);
+  saveSalaryData();showToast(recs.length+'件をインポートしました');showPage('salary');
+}
+
+function renderSalaryTable(month){
+  const tbl=document.getElementById('salary-table');
+  if(!tbl)return;
+  const recs=salaryDb.records.filter(r=>r.month===month);
+  if(!recs.length){tbl.innerHTML='<p class="muted" style="padding:20px;text-align:center;">データがありません</p>';return;}
+
+  const totalPay=recs.reduce((s,r)=>s+getEffectivePay(r),0);
+  const totalTr=recs.reduce((s,r)=>s+(Number(r.transport)||0),0);
+
+  tbl.innerHTML=`
+    <div class="alert alert-info mb8" style="font-size:11px;">💡 給与額のセルを直接クリックして手動修正できます。</div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>スタッフ</th><th>日付</th><th>場所</th><th class="tr">売上</th><th>勤務時間</th><th class="tr">交通費</th><th class="tr">計算給与</th><th class="tr">支給額</th><th>操作</th></tr></thead>
+      <tbody>${recs.map(r=>{
+        const calcP=calcPay(r);
+        const effectiveP=getEffectivePay(r);
+        const isManual=(r.manualPay!==undefined&&r.manualPay!==null&&r.manualPay!=='');
+        const ss=getStaffSetting(r.staffName);
+        const trDay=r.trainingDay&&ss.isTraining;
+        return `<tr data-id="${r.id}">
+          <td><strong>${esc(r.staffName)}</strong>${trDay?'<span class="badge badge-training" style="margin-left:4px;">研修</span>':''}</td>
+          <td>${r.date}</td><td>${esc(r.location||'')}</td>
+          <td class="tr">${formatMoney(r.salesAmount)}</td>
+          <td>${r.workHours||'-'}</td>
+          <td class="tr">${formatMoney(r.transport)}</td>
+          <td class="tr muted">${isManual?`<span style="text-decoration:line-through;">${formatMoney(calcP)}</span>`:formatMoney(calcP)}</td>
+          <td class="tr"><input class="edit-input manual-pay-input" data-id="${r.id}" type="number" value="${effectiveP}" title="クリックして手動修正（空欄=自動計算）" style="width:90px;${isManual?'color:var(--amber);font-weight:700;':''}"/></td>
+          <td>
+            <button class="btn btn-outline btn-sm rec-edit-btn" data-id="${r.id}">編集</button>
+            <button class="btn btn-red btn-sm rec-del-btn" data-id="${r.id}" style="margin-left:4px;">削除</button>
+          </td>
+        </tr>`;
+      }).join('')}
+      </tbody>
+      <tfoot><tr><td colspan="7" class="bold">合計</td><td class="tr bold">${formatMoney(totalPay+totalTr)}</td><td></td></tr></tfoot>
+    </table></div>`;
+
+  // 手動給与修正
+  tbl.querySelectorAll('.manual-pay-input').forEach(inp=>{
+    inp.addEventListener('change',()=>{
+      const id=Number(inp.dataset.id);
+      const rec=salaryDb.records.find(r=>r.id===id);
+      if(!rec)return;
+      const v=inp.value.trim();
+      rec.manualPay=(v==='')?undefined:Number(v);
+      saveSalaryData();
+      // スタイル更新
+      inp.style.color=(v==='')?'':'var(--amber)';
+      inp.style.fontWeight=(v==='')?'':'700';
+    });
+    // フォーカス時に自動計算値を表示
+    inp.addEventListener('focus',()=>{
+      const id=Number(inp.dataset.id);
+      const rec=salaryDb.records.find(r=>r.id===id);
+      if(rec&&(rec.manualPay===undefined||rec.manualPay===null||rec.manualPay===''))
+        inp.value=calcPay(rec);
+    });
+  });
+  tbl.querySelectorAll('.rec-edit-btn').forEach(b=>b.addEventListener('click',()=>editRecord(Number(b.dataset.id))));
+  tbl.querySelectorAll('.rec-del-btn').forEach(b=>b.addEventListener('click',()=>{
+    if(!confirm('削除しますか？'))return;
+    salaryDb.records=salaryDb.records.filter(r=>r.id!==Number(b.dataset.id));
+    saveSalaryData();renderSalaryTable(month);
+  }));
+}
+
+function editRecord(id){
+  const r=salaryDb.records.find(x=>x.id===id);
+  if(!r)return;
+  const ss=getStaffSetting(r.staffName);
+  document.getElementById('modal-title').textContent='勤務記録を編集';
+  document.getElementById('modal-body').innerHTML=`
+    <div class="form-group"><label class="form-label">スタッフ名</label><input class="form-control" id="e0" value="${esc(r.staffName)}"/></div>
+    <div class="form-group"><label class="form-label">日付</label><input class="form-control" type="date" id="e1" value="${toISO(r.date)}"/></div>
+    <div class="form-group"><label class="form-label">場所</label><input class="form-control" id="e2" value="${esc(r.location||'')}"/></div>
+    <div class="form-group"><label class="form-label">売上高（円）</label><input class="form-control" type="number" id="e3" value="${r.salesAmount||0}"/></div>
+    <div class="form-group"><label class="form-label">勤務時間（例: 8:00）</label><input class="form-control" id="e4" value="${esc(r.workHours||'')}"/></div>
+    <div class="form-group"><label class="form-label">交通費（円）</label><input class="form-control" type="number" id="e5" value="${r.transport||0}"/></div>
+    <div class="form-group"><label class="form-label">通勤経路</label><input class="form-control" id="e6" value="${esc(r.route||'')}"/></div>
+    <div class="form-group"><label class="form-label">備考</label><textarea class="form-control" id="e7">${esc(r.memo||'')}</textarea></div>
+    <div class="form-group"><label class="form-label"><input type="checkbox" id="e8" ${r.trainingDay?'checked':''}/> 研修日（研修日給で計算）</label></div>`;
+  document.getElementById('modal-footer').innerHTML=
+    '<button class="btn btn-primary" id="save-edit-btn">保存</button><button class="btn btn-outline" onclick="closeModal()">キャンセル</button>';
+  document.getElementById('modal').style.display='flex';
+  document.getElementById('save-edit-btn').addEventListener('click',()=>{
+    const idx=salaryDb.records.findIndex(x=>x.id===id);
+    if(idx===-1)return;
+    salaryDb.records[idx]={...salaryDb.records[idx],
+      staffName:document.getElementById('e0').value,
+      date:document.getElementById('e1').value,
+      location:document.getElementById('e2').value,
+      salesAmount:Number(document.getElementById('e3').value)||0,
+      workHours:document.getElementById('e4').value,
+      transport:Number(document.getElementById('e5').value)||0,
+      route:document.getElementById('e6').value,
+      memo:document.getElementById('e7').value,
+      trainingDay:document.getElementById('e8').checked
+    };
+    closeModal();saveSalaryData();renderSalaryTable(salaryDb.records[idx].month);
+  });
+}
+
+function addRecord(month){
+  const names=[...new Set([...salaryDb.records.map(r=>r.staffName),...Object.keys(salaryDb.staffSettings)])];
+  document.getElementById('modal-title').textContent='記録を追加';
+  document.getElementById('modal-body').innerHTML=`
+    <div class="form-group"><label class="form-label">スタッフ名</label>
+      <select class="form-control" id="e0"><option value="">-- 選択 --</option>${names.map(n=>`<option>${esc(n)}</option>`).join('')}</select></div>
+    <div class="form-group"><label class="form-label">日付</label><input class="form-control" type="date" id="e1" value="${month?month+'-01':''}"/></div>
+    <div class="form-group"><label class="form-label">場所</label><input class="form-control" id="e2"/></div>
+    <div class="form-group"><label class="form-label">売上高（円）</label><input class="form-control" type="number" id="e3" value="0"/></div>
+    <div class="form-group"><label class="form-label">勤務時間</label><input class="form-control" id="e4"/></div>
+    <div class="form-group"><label class="form-label">交通費（円）</label><input class="form-control" type="number" id="e5" value="0"/></div>
+    <div class="form-group"><label class="form-label">通勤経路</label><input class="form-control" id="e6"/></div>
+    <div class="form-group"><label class="form-label">備考</label><textarea class="form-control" id="e7"></textarea></div>
+    <div class="form-group"><label class="form-label"><input type="checkbox" id="e8"/> 研修日（研修日給で計算）</label></div>`;
+  document.getElementById('modal-footer').innerHTML=
+    '<button class="btn btn-primary" id="add-rec-modal-btn">追加</button><button class="btn btn-outline" onclick="closeModal()">キャンセル</button>';
+  document.getElementById('modal').style.display='flex';
+  document.getElementById('add-rec-modal-btn').addEventListener('click',()=>{
+    const rec={id:salaryDb.nextId++,staffName:document.getElementById('e0').value,date:document.getElementById('e1').value,
+      location:document.getElementById('e2').value,salesAmount:Number(document.getElementById('e3').value),
+      workHours:document.getElementById('e4').value,transport:Number(document.getElementById('e5').value),
+      route:document.getElementById('e6').value,memo:document.getElementById('e7').value,
+      trainingDay:document.getElementById('e8').checked};
+    rec.month=toISO(rec.date).slice(0,7)||month;
+    salaryDb.records.push(rec);
+    closeModal();saveSalaryData();showPage('salary');
+  });
+}
+
+/* ========================
+   STAFF SETTINGS
+======================== */
+pages.staff=function(el){
+  const names=[...new Set([...salaryDb.records.map(r=>r.staffName),...Object.keys(salaryDb.staffSettings)])];
+  el.innerHTML=`
+    <div class="card">
+      <div class="card-title">スタッフ設定</div>
+      <div class="alert alert-info mb12">給与タイプ・研修設定・振込先を設定します。</div>
+      ${names.map(name=>{
+        const s=getStaffSetting(name);
+        return `<div class="card" style="margin-bottom:10px;">
+          <div class="flex items-c mb8">
+            <input class="form-control" style="font-size:14px;font-weight:700;width:180px;" value="${esc(name)}" data-oldname="${esc(name)}" onchange="renameStaff(this.dataset.oldname,this.value,this)"/>
+            <span class="muted" style="margin-left:6px;font-size:10px;">← 名前を変更可</span>
+            <span class="badge ${s.employment==='会社採用'?'badge-blue':'badge-amber'} ml-a">${s.employment||'外部委託'}</span>
+          </div>
+          <div class="grid3 mb8">
+            <div class="form-group" style="margin-bottom:0;"><label class="form-label">給与タイプ</label>
+              <select class="form-control" onchange="setSS('${esc(name)}','type',this.value)">
+                <option ${s.type==='歩合'||!s.type?'selected':''}>歩合</option>
+                <option ${s.type==='最低保証'?'selected':''}>最低保証</option>
+                <option ${s.type==='時給'?'selected':''}>時給</option>
+              </select></div>
+            <div class="form-group" style="margin-bottom:0;"><label class="form-label">雇用形態</label>
+              <select class="form-control" onchange="setSS('${esc(name)}','employment',this.value)">
+                <option ${s.employment==='外部委託'||!s.employment?'selected':''}>外部委託</option>
+                <option ${s.employment==='会社採用'?'selected':''}>会社採用</option>
+              </select></div>
+            <div class="form-group" style="margin-bottom:0;"><label class="form-label">歩合率（%）</label>
+              <input class="form-control" type="number" value="${s.rate||20}" onchange="setSS('${esc(name)}','rate',+this.value)"/></div>
+          </div>
+          <div class="grid3 mb8">
+            <div class="form-group" style="margin-bottom:0;"><label class="form-label">最低保証額（円）</label>
+              <input class="form-control" type="number" value="${s.minAmount||10000}" onchange="setSS('${esc(name)}','minAmount',+this.value)"/></div>
+            <div class="form-group" style="margin-bottom:0;"><label class="form-label">時給（円）</label>
+              <input class="form-control" type="number" value="${s.hourlyRate||1400}" onchange="setSS('${esc(name)}','hourlyRate',+this.value)"/></div>
+          </div>
+          <div class="divider"></div>
+          <div class="card-title" style="display:flex;align-items:center;gap:8px;">
+            <span>研修設定</span>
+            <label style="display:flex;align-items:center;gap:4px;font-weight:400;font-size:11px;text-transform:none;letter-spacing:0;">
+              <input type="checkbox" onchange="setSS('${esc(name)}','isTraining',this.checked)" ${s.isTraining?'checked':''}/>
+              研修中フラグをON
+            </label>
+          </div>
+          <div class="grid3 mb8">
+            <div class="form-group" style="margin-bottom:0;"><label class="form-label">研修日給（円/日）</label>
+              <input class="form-control" type="number" value="${s.trainingDayRate||8000}" onchange="setSS('${esc(name)}','trainingDayRate',+this.value)"/></div>
+          </div>
+          ${s.isTraining?'<div class="alert alert-warn" style="font-size:11px;">⚠️ 研修中ONです。研修日フラグが付いた勤務は研修日給で計算されます。</div>':''}
+          <div class="divider"></div>
+          <div class="card-title">振込先</div>
+          <div class="grid3">
+            <div class="form-group" style="margin-bottom:0;"><label class="form-label">銀行名</label><input class="form-control" value="${s.bankName||''}" onchange="setSS('${esc(name)}','bankName',this.value)" placeholder="○○銀行"/></div>
+            <div class="form-group" style="margin-bottom:0;"><label class="form-label">支店名</label><input class="form-control" value="${s.bankBranch||''}" onchange="setSS('${esc(name)}','bankBranch',this.value)"/></div>
+            <div class="form-group" style="margin-bottom:0;"><label class="form-label">口座種別</label>
+              <select class="form-control" onchange="setSS('${esc(name)}','bankType',this.value)">
+                <option ${s.bankType==='普通'||!s.bankType?'selected':''}>普通</option>
+                <option ${s.bankType==='当座'?'selected':''}>当座</option>
+              </select></div>
+            <div class="form-group" style="margin-bottom:0;"><label class="form-label">口座番号</label><input class="form-control" value="${s.bankNo||''}" onchange="setSS('${esc(name)}','bankNo',this.value)"/></div>
+            <div class="form-group" style="margin-bottom:0;"><label class="form-label">口座名義</label><input class="form-control" value="${s.bankHolder||''}" onchange="setSS('${esc(name)}','bankHolder',this.value)"/></div>
+          </div>
+          <div class="divider"></div>
+          <button class="btn btn-red btn-sm del-staff-btn" data-name="${esc(name)}">🗑 削除</button>
+        </div>`;
+      }).join('')}
+      <button class="btn btn-primary mt8" id="add-staff-btn">＋ スタッフを追加</button>
+    </div>`;
+
+  el.querySelector('#add-staff-btn').addEventListener('click',()=>{
+    document.getElementById('modal-title').textContent='スタッフを追加';
+    document.getElementById('modal-body').innerHTML='<div class="form-group"><label class="form-label">スタッフ名</label><input class="form-control" id="ns-input"/></div>';
+    document.getElementById('modal-footer').innerHTML='<button class="btn btn-primary" id="add-ns-btn">追加</button><button class="btn btn-outline" onclick="closeModal()">キャンセル</button>';
+    document.getElementById('modal').style.display='flex';
+    document.getElementById('add-ns-btn').addEventListener('click',()=>{
+      const n=document.getElementById('ns-input').value.trim();
+      if(!n)return;if(!salaryDb.staffSettings[n])salaryDb.staffSettings[n]={};
+      saveSalaryData();closeModal();showPage('staff');
+    });
+  });
+  el.querySelectorAll('.del-staff-btn').forEach(b=>b.addEventListener('click',()=>{
+    const name=b.dataset.name;
+    if(!confirm(name+'を削除しますか？'))return;
+    delete salaryDb.staffSettings[name];saveSalaryData();showPage('staff');
+  }));
+};
+
+window.setSS=function(name,key,val){
+  if(!salaryDb.staffSettings[name])salaryDb.staffSettings[name]={};
+  salaryDb.staffSettings[name][key]=val;
+  saveSalaryData();
+};
+window.renameStaff=function(oldName,newName,inp){
+  newName=newName.trim();
+  if(!newName){inp.value=oldName;return;}
+  if(newName===oldName)return;
+  if(salaryDb.staffSettings[newName]){alert('既に存在します');inp.value=oldName;return;}
+  if(salaryDb.staffSettings[oldName]){salaryDb.staffSettings[newName]=salaryDb.staffSettings[oldName];delete salaryDb.staffSettings[oldName];}
+  salaryDb.records.forEach(r=>{if(r.staffName===oldName)r.staffName=newName;});
+  inp.dataset.oldname=newName;
+  saveSalaryData();showToast(oldName+' → '+newName);
+};
+
+/* ========================
+   DOCUMENTS
+======================== */
+pages.documents=function(el){
+  const months=[...new Set(salaryDb.records.map(r=>r.month))].sort().reverse();
+  const preset=window._docPreset||{};
+  window._docPreset=null;
+  el.innerHTML=`
+    <div class="card no-print">
+      <div class="card-title">書類作成</div>
+      <div class="grid2">
+        <div class="form-group"><label class="form-label">対象月</label>
+          <select class="form-control" id="doc-month" onchange="updateDocStaff()">
+            ${months.map(m=>`<option value="${m}" ${m===(preset.month||months[0])?'selected':''}>${formatMonth(m)}</option>`).join('')}
+          </select></div>
+        <div class="form-group"><label class="form-label">支給日</label>
+          <input class="form-control" type="date" id="doc-paydate"/></div>
+      </div>
+      <div class="form-group"><label class="form-label">スタッフ</label>
+        <div id="doc-staff-list" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px;"></div>
+      </div>
+      <div class="btn-group mt8">
+        <button class="btn btn-primary" id="gen-auto-btn">📄 書類を作成</button>
+        <button class="btn btn-blue" id="gen-all-btn">🖨️ 一括印刷</button>
+      </div>
+    </div>
+    <div id="doc-area"></div>`;
+
+  updateDocStaff(preset.name);
+  el.querySelector('#gen-auto-btn').addEventListener('click',generateAutoDoc);
+  el.querySelector('#gen-all-btn').addEventListener('click',generateAllDocs);
+};
+
+window.updateDocStaff=function(presetName){
+  const month=document.getElementById('doc-month')?.value;
+  const staffInMonth=[...new Set(salaryDb.records.filter(r=>r.month===month).map(r=>r.staffName))];
+  const el=document.getElementById('doc-staff-list');
+  if(!el)return;
+  el.innerHTML=staffInMonth.map(name=>{
+    const ss=getStaffSetting(name);
+    const isChecked=!presetName||(name===presetName);
+    const cls=ss.type==='時給'?'badge-blue':'badge-amber';
+    const label=ss.type==='時給'?'給与明細':'請求書';
+    return `<label style="display:flex;align-items:center;gap:5px;padding:5px 10px;border:1px solid var(--border);border-radius:8px;cursor:pointer;background:var(--surface);">
+      <input type="checkbox" name="doc-staff-cb" value="${esc(name)}" ${isChecked?'checked':''}/>
+      <span>${esc(name)}</span><span class="badge ${cls}">${label}</span></label>`;
+  }).join('');
+};
+
+function generateAutoDoc(){
+  const month=document.getElementById('doc-month').value;
+  const payDate=document.getElementById('doc-paydate').value;
+  const checked=[...document.querySelectorAll('input[name="doc-staff-cb"]:checked')].map(cb=>cb.value);
+  if(!checked.length){alert('スタッフを選択してください');return;}
+  generateDocFor(checked[0],month,payDate,getDocType(checked[0]));
+}
+function generateAllDocs(){
+  const month=document.getElementById('doc-month').value;
+  const payDate=document.getElementById('doc-paydate').value;
+  const checked=[...document.querySelectorAll('input[name="doc-staff-cb"]:checked')].map(cb=>cb.value);
+  if(!checked.length){alert('スタッフを選択してください');return;}
+  const html=checked.map(name=>{
+    const recs=salaryDb.records.filter(r=>r.month===month&&r.staffName===name);
+    return recs.length?buildDocHtml(name,month,payDate,getDocType(name),recs):'';
+  }).join('<div style="page-break-after:always;height:20px;"></div>');
+  document.getElementById('doc-area').innerHTML=html+
+    '<div class="btn-group mt12 no-print" style="max-width:780px;margin:12px auto 0;">'+
+    '<button class="btn btn-primary btn-lg" onclick="window.print()">🖨️ 印刷</button>'+
+    '<button class="btn btn-outline" onclick="document.getElementById(\'doc-area\').innerHTML=\'\'">閉じる</button></div>';
+}
+function getDocType(name){
+  const ss=getStaffSetting(name);
+  if(ss.type==='時給')return 'payslip';
+  return (ss.employment==='外部委託'||!ss.employment)?'invoice':'payslip';
+}
+function generateDocFor(name,month,payDate,type){
+  const recs=salaryDb.records.filter(r=>r.month===month&&r.staffName===name);
+  if(!recs.length){alert('データが見つかりません');return;}
+  document.getElementById('doc-area').innerHTML=
+    buildDocHtml(name,month,payDate,type,recs)+
+    '<div class="btn-group mt12 no-print" style="max-width:780px;margin:12px auto 0;">'+
+    '<button class="btn btn-primary btn-lg" onclick="window.print()">🖨️ 印刷</button>'+
+    '<button class="btn btn-outline" onclick="document.getElementById(\'doc-area\').innerHTML=\'\'">閉じる</button></div>';
+}
+function buildDocHtml(staffName,month,payDate,type,recs){
+  const ss=getStaffSetting(staffName);
+  const c=salaryDb.company||{};
+  const monthStr=formatMonth(month);
+  const totalPay=recs.reduce((s,r)=>s+getEffectivePay(r),0);
+  const totalTr=recs.reduce((s,r)=>s+(Number(r.transport)||0),0);
+  const totalAmt=totalPay+totalTr;
+  const fixedItems=(ss.fixedItems||[]).filter(i=>i.amount);
+  const fixedTotal=fixedItems.reduce((s,i)=>s+Number(i.amount),0);
+  const grandTotal=totalAmt+fixedTotal;
+  const detailRows=recs.map(r=>`<tr><td>${r.date}</td><td>${r.location||''}</td><td style="text-align:right;">${r.workHours||'-'}</td><td style="text-align:right;">${formatMoney(r.salesAmount)}</td><td style="text-align:right;">${formatMoney(getEffectivePay(r))}</td><td style="text-align:right;">${formatMoney(Number(r.transport)||0)}</td></tr>`).join('');
+  const fixedRows=fixedItems.map(i=>`<tr><td colspan="5">${i.memo}</td><td style="text-align:right;">${formatMoney(i.amount)}</td></tr>`).join('');
+  const detailTable=`<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:8px;">
+    <thead><tr style="background:#f5f5f5;">${['日付','場所','時間','売上','給与','交通費'].map(h=>`<th style="padding:5px 7px;border:1px solid #ddd;text-align:left;">${h}</th>`).join('')}</tr></thead>
+    <tbody>${detailRows}${fixedRows}</tbody>
+    <tfoot><tr style="font-weight:700;"><td colspan="4" style="padding:5px 7px;border:1px solid #ddd;">合計（${recs.length}日）</td><td style="padding:5px 7px;border:1px solid #ddd;text-align:right;">${formatMoney(totalPay+fixedTotal)}</td><td style="padding:5px 7px;border:1px solid #ddd;text-align:right;">${formatMoney(totalTr)}</td></tr></tfoot>
+  </table>`;
+  if(type==='invoice'){
+    return `<div style="max-width:780px;margin:0 auto;padding:24px;background:white;border:1px solid #ddd;font-family:'Noto Sans JP',sans-serif;">
+      <div style="display:flex;justify-content:space-between;margin-bottom:20px;">
+        <div><h2 style="font-size:22px;margin-bottom:4px;">請 求 書</h2><div style="font-size:11px;color:#666;">${c.name||''} 御中</div></div>
+        <div style="text-align:right;font-size:11px;color:#555;">${c.name||''}<br>${c.address||''}<br>${c.tel||''}<br>${c.invoiceNo?'登録番号: '+c.invoiceNo:''}</div>
+      </div>
+      <div style="font-size:13px;margin-bottom:16px;"><strong>${staffName}</strong>　${monthStr}分　請求金額: <strong style="font-size:18px;">${formatMoney(grandTotal)}</strong></div>
+      ${payDate?`<div style="font-size:12px;color:#555;margin-bottom:12px;">支払期日: ${payDate}　振込先: ${ss.bankName||''} ${ss.bankBranch||''} ${ss.bankType||''} ${ss.bankNo||''} ${ss.bankHolder||''}</div>`:''}
+      ${detailTable}</div>`;
+  }else{
+    return `<div style="max-width:780px;margin:0 auto;padding:20px;background:white;border:1px solid #ddd;font-family:'Noto Sans JP',sans-serif;">
+      <div style="display:flex;justify-content:space-between;margin-bottom:14px;align-items:flex-end;">
+        <div><div style="font-size:16px;font-weight:700;">${staffName}</div><div style="font-size:11px;color:#555;">${monthStr}分　給与支払明細</div></div>
+        <div style="font-size:17px;font-weight:700;">合計: ${formatMoney(grandTotal)}</div>
+      </div>
+      ${detailTable}</div>`;
+  }
+}
+
+/* ========================
+   HISTORY
+======================== */
+pages.history=function(el){
+  const months=[...new Set(salaryDb.records.map(r=>r.month))].sort().reverse();
+  const monthData=months.map(m=>{
+    const recs=salaryDb.records.filter(r=>r.month===m);
+    const pay=recs.reduce((s,r)=>s+getEffectivePay(r),0);
+    const tr=recs.reduce((s,r)=>s+(Number(r.transport)||0),0);
+    return{month:m,pay,tr,total:pay+tr};
+  });
+  el.innerHTML=`
+    <div class="card">
+      <div class="card-title">月別給与合計</div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>月</th><th class="tr">給与合計</th><th class="tr">交通費</th><th class="tr">支給総額</th></tr></thead>
+        <tbody>${monthData.map(m=>`<tr><td><strong>${formatMonth(m.month)}</strong></td><td class="tr">${formatMoney(m.pay)}</td><td class="tr">${formatMoney(m.tr)}</td><td class="tr bold">${formatMoney(m.total)}</td></tr>`).join('')}</tbody>
+      </table></div>
+    </div>
+    <div class="card">
+      <div class="card-title">スタッフ別集計</div>
+      <select class="form-control mb12" style="width:160px;" id="hist-m" onchange="renderStaffHist(this.value)">
+        <option value="">全期間</option>
+        ${months.map(m=>`<option value="${m}">${formatMonth(m)}</option>`).join('')}
+      </select>
+      <div id="staff-hist"></div>
+    </div>`;
+  renderStaffHist('');
+};
+function renderStaffHist(month){
+  const recs=month?salaryDb.records.filter(r=>r.month===month):salaryDb.records;
+  const names=[...new Set(recs.map(r=>r.staffName))];
+  const el=document.getElementById('staff-hist');if(!el)return;
+  el.innerHTML=`<div class="table-wrap"><table>
+    <thead><tr><th>スタッフ</th><th>タイプ</th><th class="tr">出勤日数</th><th class="tr">売上合計</th><th class="tr">給与合計</th><th class="tr">交通費</th><th class="tr">支給総額</th></tr></thead>
+    <tbody>${names.map(name=>{
+      const sr=recs.filter(r=>r.staffName===name);
+      const pay=sr.reduce((s,r)=>s+getEffectivePay(r),0);
+      const tr=sr.reduce((s,r)=>s+(Number(r.transport)||0),0);
+      const sales=sr.reduce((s,r)=>s+(Number(r.salesAmount)||0),0);
+      const ss=getStaffSetting(name);
+      const cls=ss.isTraining?'badge-training':'badge-green';
+      return `<tr><td><strong>${esc(name)}</strong></td><td><span class="badge ${cls}">${ss.isTraining?'研修中':ss.type||'歩合'}</span></td><td class="tr">${sr.length}日</td><td class="tr">${formatMoney(sales)}</td><td class="tr bold">${formatMoney(pay)}</td><td class="tr">${formatMoney(tr)}</td><td class="tr bold">${formatMoney(pay+tr)}</td></tr>`;
+    }).join('')}</tbody>
+  </table></div>`;
+}
+window.renderStaffHist=renderStaffHist;
+
+/* ========================
+   EXPORT TO PROFIT
+======================== */
+pages.export=function(el){
+  const months=[...new Set(salaryDb.records.map(r=>r.month))].sort().reverse();
+  el.innerHTML=`
+    <div class="card">
+      <div class="card-title">収支分析へ連携</div>
+      <div class="alert alert-info mb12">計算した給与データを収支分析アプリの「人件費」として自動登録します。同月のデータは上書きされます。</div>
+      ${months.length?`
+        <div class="flex gap8 items-c mb12">
+          <select class="form-control" style="width:160px;" id="export-month">
+            ${months.map(m=>`<option value="${m}">${formatMonth(m)}</option>`).join('')}
+          </select>
+          <button class="btn btn-primary" id="do-export-btn">📤 収支分析へ連携する</button>
+        </div>
+        <div id="export-preview"></div>`
+      :`<p class="muted">給与データがありません</p>`}
+    </div>`;
+
+  const exportBtn=el.querySelector('#do-export-btn');
+  if(exportBtn){
+    const updatePreview=()=>{
+      const m=el.querySelector('#export-month').value;
+      const recs=salaryDb.records.filter(r=>r.month===m);
+      const staffList=[...new Set(recs.map(r=>r.staffName))];
+      const prev=el.querySelector('#export-preview');
+      if(!prev)return;
+      prev.innerHTML=`<div class="table-wrap"><table>
+        <thead><tr><th>スタッフ</th><th class="tr">給与</th><th class="tr">交通費</th><th class="tr">合計</th></tr></thead>
+        <tbody>${staffList.map(name=>{
+          const sr=recs.filter(r=>r.staffName===name);
+          const pay=sr.reduce((s,r)=>s+getEffectivePay(r),0);
+          const tr=sr.reduce((s,r)=>s+(Number(r.transport)||0),0);
+          return `<tr><td>${esc(name)}</td><td class="tr">${formatMoney(pay)}</td><td class="tr">${formatMoney(tr)}</td><td class="tr bold">${formatMoney(pay+tr)}</td></tr>`;
+        }).join('')}</tbody>
+        <tfoot><tr><td class="bold">合計</td><td colspan="2"></td><td class="tr bold">${formatMoney(recs.reduce((s,r)=>s+getEffectivePay(r)+(Number(r.transport)||0),0))}</td></tr></tfoot>
+      </table></div>`;
+    };
+    el.querySelector('#export-month').addEventListener('change',updatePreview);
+    updatePreview();
+    exportBtn.addEventListener('click',async()=>{
+      const m=el.querySelector('#export-month').value;
+      if(!confirm(formatMonth(m)+'の給与データを収支分析に連携しますか？'))return;
+      await exportToProfit(m);
+    });
+  }
+};
+
+/* ========================
+   COMPANY
+======================== */
+pages.company=function(el){
+  const c=salaryDb.company||{};
+  el.innerHTML=`
+    <div class="card">
+      <div class="card-title">会社情報</div>
+      <div class="grid2">
+        <div class="form-group"><label class="form-label">会社名</label><input class="form-control" value="${esc(c.name||'')}" onchange="salaryDb.company.name=this.value"/></div>
+        <div class="form-group"><label class="form-label">インボイス登録番号</label><input class="form-control" value="${esc(c.invoiceNo||'')}" onchange="salaryDb.company.invoiceNo=this.value" placeholder="T-xxxxxxxxxxxxxxx"/></div>
+        <div class="form-group"><label class="form-label">郵便番号</label><input class="form-control" value="${esc(c.postal||'')}" onchange="salaryDb.company.postal=this.value"/></div>
+        <div class="form-group"><label class="form-label">電話番号</label><input class="form-control" value="${esc(c.tel||'')}" onchange="salaryDb.company.tel=this.value"/></div>
+      </div>
+      <div class="form-group"><label class="form-label">住所</label><input class="form-control" value="${esc(c.address||'')}" onchange="salaryDb.company.address=this.value"/></div>
+      <div class="form-group"><label class="form-label">メール</label><input class="form-control" value="${esc(c.email||'')}" onchange="salaryDb.company.email=this.value"/></div>
+      <div class="form-group"><label class="form-label">振込先・支払元口座</label><textarea class="form-control" onchange="salaryDb.company.bank=this.value">${esc(c.bank||'')}</textarea></div>
+      <button class="btn btn-primary" onclick="saveSalaryData()">保存</button>
+    </div>`;
+};
+window.saveSalaryData=saveSalaryData;
+
+/* ========================
+   MODAL / TOAST
+======================== */
+window.closeModal=function(){document.getElementById('modal').style.display='none';};
+window.closeModalOuter=function(e){if(e.target===document.getElementById('modal'))closeModal();};
+
+function showToast(msg,isErr=false){
+  const t=document.createElement('div');
+  t.style.cssText=`position:fixed;bottom:22px;right:22px;background:${isErr?'var(--red)':'var(--text)'};color:white;padding:11px 18px;border-radius:10px;font-size:12px;z-index:9999;box-shadow:0 4px 12px rgba(0,0,0,.2);`;
+  t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),2800);
+}
+</script>
+</body>
+</html>
