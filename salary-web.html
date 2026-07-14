@@ -222,7 +222,7 @@ function defaultSalaryDb(){
   return{
     company:{name:'株式会社 100g COFFEE',postal:'',address:'',tel:'',email:'',bank:'',invoiceNo:''},
     staffSettings:{},
-    records:[],    // {id,month,staffName,date,location,salesAmount,workHours,transport,route,memo,manualPay,trainingDay}
+    records:[],    // {id,month,staffName,date,location,salesAmount,workHours,transport,route,memo,manualPay,trainingDay,extras:[]}
     nextId:1
   };
 }
@@ -299,7 +299,7 @@ async function exportToProfit(month){
   if(!uid)return;
   const recs=salaryDb.records.filter(r=>r.month===month);
   if(!recs.length){alert('データがありません');return;}
-  const totalPay=recs.reduce((s,r)=>s+getEffectivePay(r),0);
+  const totalPay=recs.reduce((s,r)=>s+getTotalPay(r),0);
   const totalTr=recs.reduce((s,r)=>s+(Number(r.transport)||0),0);
   const total=totalPay+totalTr;
 
@@ -362,6 +362,12 @@ function getEffectivePay(record){
   if(record.manualPay!==undefined&&record.manualPay!==null&&record.manualPay!=='')
     return Number(record.manualPay);
   return calcPay(record);
+}
+function getExtrasTotal(record){
+  return (record.extras||[]).reduce((s,e)=>s+Number(e.amount||0),0);
+}
+function getTotalPay(record){
+  return getEffectivePay(record)+getExtrasTotal(record);
 }
 
 function parseWorkHours(str){
@@ -442,7 +448,7 @@ pages.dashboard=function(el){
   const m=months[0]||'';
   const recs=salaryDb.records.filter(r=>r.month===m);
   const staffList=[...new Set(recs.map(r=>r.staffName))];
-  const totalPay=recs.reduce((s,r)=>s+getEffectivePay(r),0);
+  const totalPay=recs.reduce((s,r)=>s+getTotalPay(r),0);
   const totalTr=recs.reduce((s,r)=>s+(Number(r.transport)||0),0);
 
   el.innerHTML=`
@@ -639,13 +645,13 @@ function renderSalaryTable(month){
   const recs=salaryDb.records.filter(r=>r.month===month);
   if(!recs.length){tbl.innerHTML='<p class="muted" style="padding:20px;text-align:center;">データがありません</p>';return;}
 
-  const totalPay=recs.reduce((s,r)=>s+getEffectivePay(r),0);
+  const totalPay=recs.reduce((s,r)=>s+getTotalPay(r),0);
   const totalTr=recs.reduce((s,r)=>s+(Number(r.transport)||0),0);
 
   tbl.innerHTML=`
     <div class="alert alert-info mb8" style="font-size:11px;">💡 給与額のセルを直接クリックして手動修正できます。</div>
     <div class="table-wrap"><table>
-      <thead><tr><th>スタッフ</th><th>日付</th><th>場所</th><th class="tr">売上</th><th>勤務時間</th><th class="tr">交通費</th><th class="tr">計算給与</th><th class="tr">支給額</th><th>操作</th></tr></thead>
+      <thead><tr><th>スタッフ</th><th>日付</th><th>場所</th><th class="tr">売上</th><th>勤務時間</th><th class="tr">交通費</th><th class="tr">計算給与</th><th class="tr">支給額</th><th class="tr">手当・立替</th><th class="tr">合計</th><th>操作</th></tr></thead>
       <tbody>${recs.map(r=>{
         const calcP=calcPay(r);
         const effectiveP=getEffectivePay(r);
@@ -660,6 +666,8 @@ function renderSalaryTable(month){
           <td class="tr">${formatMoney(r.transport)}</td>
           <td class="tr muted">${isManual?`<span style="text-decoration:line-through;">${formatMoney(calcP)}</span>`:formatMoney(calcP)}</td>
           <td class="tr"><input class="edit-input manual-pay-input" data-id="${r.id}" type="number" value="${effectiveP}" title="クリックして手動修正（空欄=自動計算）" style="width:90px;${isManual?'color:var(--amber);font-weight:700;':''}"/></td>
+          <td class="tr"><button class="btn btn-outline btn-sm extras-btn" data-id="${r.id}" style="font-size:10px;">${(r.extras&&r.extras.length)?formatMoney(getExtrasTotal(r))+'✏️':'＋手当'}</button></td>
+          <td class="tr bold">${formatMoney(getTotalPay(r)+(Number(r.transport)||0))}</td>
           <td>
             <button class="btn btn-outline btn-sm rec-edit-btn" data-id="${r.id}">編集</button>
             <button class="btn btn-red btn-sm rec-del-btn" data-id="${r.id}" style="margin-left:4px;">削除</button>
@@ -667,7 +675,7 @@ function renderSalaryTable(month){
         </tr>`;
       }).join('')}
       </tbody>
-      <tfoot><tr><td colspan="7" class="bold">合計</td><td class="tr bold">${formatMoney(totalPay+totalTr)}</td><td></td></tr></tfoot>
+      <tfoot><tr><td colspan="9" class="bold">合計</td><td class="tr bold">${formatMoney(recs.reduce((s,r)=>s+getTotalPay(r)+(Number(r.transport)||0),0))}</td><td></td></tr></tfoot>
     </table></div>`;
 
   // 手動給与修正
@@ -691,12 +699,47 @@ function renderSalaryTable(month){
         inp.value=calcPay(rec);
     });
   });
+  tbl.querySelectorAll('.extras-btn').forEach(b=>b.addEventListener('click',()=>editExtras(Number(b.dataset.id),month)));
   tbl.querySelectorAll('.rec-edit-btn').forEach(b=>b.addEventListener('click',()=>editRecord(Number(b.dataset.id))));
   tbl.querySelectorAll('.rec-del-btn').forEach(b=>b.addEventListener('click',()=>{
     if(!confirm('削除しますか？'))return;
     salaryDb.records=salaryDb.records.filter(r=>r.id!==Number(b.dataset.id));
     saveSalaryData();renderSalaryTable(month);
   }));
+}
+
+function editExtras(id, month){
+  const r=salaryDb.records.find(x=>x.id===id);
+  if(!r)return;
+  if(!r.extras)r.extras=[];
+  const renderExtras=()=>{
+    document.getElementById('extras-list').innerHTML=r.extras.map((e,i)=>`
+      <div class="flex gap8 items-c mb8">
+        <input class="form-control" style="flex:1;" placeholder="内容（例: 特別手当、立替金）" value="${esc(e.memo||'')}" onchange="tempExtras[${i}].memo=this.value"/>
+        <input class="form-control" style="width:110px;" type="number" placeholder="金額" value="${e.amount||0}" onchange="tempExtras[${i}].amount=+this.value"/>
+        <button class="btn btn-red btn-sm" onclick="tempExtras.splice(${i},1);window._refreshExtras()">削除</button>
+      </div>`).join('');
+  };
+  window.tempExtras=JSON.parse(JSON.stringify(r.extras));
+  window._refreshExtras=()=>{
+    r.extras=JSON.parse(JSON.stringify(window.tempExtras));
+    renderExtras();
+  };
+  document.getElementById('modal-title').textContent='手当・立替金入力 — '+r.staffName+' '+r.date;
+  document.getElementById('modal-body').innerHTML=`
+    <div class="alert alert-info mb12" style="font-size:11px;">特別手当・立替金・交通費追加分などを入力してください。給与に加算されます。</div>
+    <div id="extras-list"></div>
+    <button class="btn btn-outline btn-sm mt8" onclick="tempExtras.push({memo:'',amount:0});window._refreshExtras()">＋ 項目を追加</button>`;
+  document.getElementById('modal-footer').innerHTML=
+    '<button class="btn btn-primary" id="save-extras-btn">保存</button><button class="btn btn-outline" onclick="closeModal()">キャンセル</button>';
+  document.getElementById('modal').style.display='flex';
+  renderExtras();
+  document.getElementById('save-extras-btn').addEventListener('click',()=>{
+    const idx=salaryDb.records.findIndex(x=>x.id===id);
+    if(idx===-1)return;
+    salaryDb.records[idx].extras=window.tempExtras.filter(e=>e.memo||e.amount);
+    closeModal();saveSalaryData();renderSalaryTable(month);
+  });
 }
 
 function editRecord(id){
@@ -957,18 +1000,25 @@ function buildDocHtml(staffName,month,payDate,type,recs){
   const ss=getStaffSetting(staffName);
   const c=salaryDb.company||{};
   const monthStr=formatMonth(month);
-  const totalPay=recs.reduce((s,r)=>s+getEffectivePay(r),0);
+  const totalPay=recs.reduce((s,r)=>s+getTotalPay(r),0);
   const totalTr=recs.reduce((s,r)=>s+(Number(r.transport)||0),0);
   const totalAmt=totalPay+totalTr;
-  const fixedItems=(ss.fixedItems||[]).filter(i=>i.amount);
-  const fixedTotal=fixedItems.reduce((s,i)=>s+Number(i.amount),0);
-  const grandTotal=totalAmt+fixedTotal;
-  const detailRows=recs.map(r=>`<tr><td>${r.date}</td><td>${r.location||''}</td><td style="text-align:right;">${r.workHours||'-'}</td><td style="text-align:right;">${formatMoney(r.salesAmount)}</td><td style="text-align:right;">${formatMoney(getEffectivePay(r))}</td><td style="text-align:right;">${formatMoney(Number(r.transport)||0)}</td></tr>`).join('');
-  const fixedRows=fixedItems.map(i=>`<tr><td colspan="5">${i.memo}</td><td style="text-align:right;">${formatMoney(i.amount)}</td></tr>`).join('');
+  // 手当・立替の集計
+  const allExtras=recs.flatMap(r=>(r.extras||[]).filter(e=>e.amount));
+  const extrasTotal=allExtras.reduce((s,e)=>s+Number(e.amount||0),0);
+  const grandTotal=totalAmt+extrasTotal;
+  const detailRows=recs.map(r=>{
+    const pay=getEffectivePay(r);
+    const tr2=Number(r.transport)||0;
+    const ss2=getStaffSetting(r.staffName);
+    const isTrainingDay=r.trainingDay&&ss2.isTraining;
+    return `<tr><td>${r.date}</td><td>${r.location||''}</td><td style="text-align:right;">${r.workHours||'-'}</td><td style="text-align:right;">${formatMoney(r.salesAmount)}</td><td style="text-align:right;">${formatMoney(pay)}${isTrainingDay?'<span style="font-size:9px;color:#6B2FA0;"> (研修)</span>':''}</td><td style="text-align:right;">${formatMoney(tr2)}</td></tr>`;
+  }).join('');
+  const extrasRows=allExtras.map(e=>`<tr><td colspan="4" style="padding:5px 7px;border:1px solid #ddd;">${esc(e.memo||'手当')}</td><td style="padding:5px 7px;border:1px solid #ddd;text-align:right;">${formatMoney(e.amount)}</td><td style="padding:5px 7px;border:1px solid #ddd;"></td></tr>`).join('');
   const detailTable=`<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:8px;">
     <thead><tr style="background:#f5f5f5;">${['日付','場所','時間','売上','給与','交通費'].map(h=>`<th style="padding:5px 7px;border:1px solid #ddd;text-align:left;">${h}</th>`).join('')}</tr></thead>
-    <tbody>${detailRows}${fixedRows}</tbody>
-    <tfoot><tr style="font-weight:700;"><td colspan="4" style="padding:5px 7px;border:1px solid #ddd;">合計（${recs.length}日）</td><td style="padding:5px 7px;border:1px solid #ddd;text-align:right;">${formatMoney(totalPay+fixedTotal)}</td><td style="padding:5px 7px;border:1px solid #ddd;text-align:right;">${formatMoney(totalTr)}</td></tr></tfoot>
+    <tbody>${detailRows}${extrasRows}</tbody>
+    <tfoot><tr style="font-weight:700;"><td colspan="4" style="padding:5px 7px;border:1px solid #ddd;">合計（${recs.length}日）</td><td style="padding:5px 7px;border:1px solid #ddd;text-align:right;">${formatMoney(totalPay+extrasTotal)}</td><td style="padding:5px 7px;border:1px solid #ddd;text-align:right;">${formatMoney(totalTr)}</td></tr></tfoot>
   </table>`;
   if(type==='invoice'){
     return `<div style="max-width:780px;margin:0 auto;padding:24px;background:white;border:1px solid #ddd;font-family:'Noto Sans JP',sans-serif;">
@@ -1076,7 +1126,7 @@ pages.records=function(el){
     if(lf)recs=recs.filter(r=>(r.location||'').includes(lf));
     recs.sort((a,b)=>a.date<b.date?1:-1);
 
-    const totalPay=recs.reduce((s,r)=>s+getEffectivePay(r),0);
+    const totalPay=recs.reduce((s,r)=>s+getTotalPay(r),0);
     const totalTr=recs.reduce((s,r)=>s+(Number(r.transport)||0),0);
     const totalSales=recs.reduce((s,r)=>s+(Number(r.salesAmount)||0),0);
 
