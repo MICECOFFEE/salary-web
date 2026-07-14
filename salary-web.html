@@ -1090,9 +1090,8 @@ function generateAllDocs(){
 }
 function getDocType(name){
   const ss=getStaffSetting(name);
-  // 現在の給与タイプと雇用形態で判定
-  if(ss.type==='時給'&&ss.employment!=='外部委託')return 'payslip';
-  return (ss.employment==='外部委託'||!ss.employment)?'invoice':'payslip';
+  // 雇用形態のみで判定（給与タイプは関係なし）
+  return (ss.employment==='会社採用')?'payslip':'invoice';
 }
 function generateDocFor(name,month,payDate,type){
   const recs=salaryDb.records.filter(r=>r.month===month&&r.staffName===name);
@@ -1144,6 +1143,7 @@ function buildDocHtml(staffName,month,payDate,type,recs){
         <div><div style="font-size:16px;font-weight:700;">${staffName}</div><div style="font-size:11px;color:#555;">${monthStr}分　給与支払明細</div></div>
         <div style="font-size:17px;font-weight:700;">合計: ${formatMoney(grandTotal)}</div>
       </div>
+      ${payDate?`<div style="font-size:12px;color:#555;margin-bottom:12px;">支払期日: ${payDate}　振込先: ${ss.bankName||''} ${ss.bankBranch||''} ${ss.bankType||''} ${ss.bankNo||''} ${ss.bankHolder||''}</div>`:''}
       ${detailTable}</div>`;
   }
 }
