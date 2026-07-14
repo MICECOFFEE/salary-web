@@ -510,6 +510,7 @@ pages.salary=function(el){
       <div class="flex gap8 items-c mb12">
         <select class="form-control" style="width:160px;" id="sal-month-sel"></select>
         <button class="btn btn-outline btn-sm" id="add-rec-btn">＋ 手動追加</button>
+        <button class="btn btn-outline btn-sm" id="add-extra-only-btn">＋ 手当のみ追加</button>
         <button class="btn btn-red btn-sm ml-a" id="clear-month-btn">🗑 この月削除</button>
       </div>
       <div id="salary-table"></div>
@@ -526,6 +527,7 @@ pages.salary=function(el){
 
   salMonSel.addEventListener('change',()=>renderSalaryTable(salMonSel.value));
   el.querySelector('#add-rec-btn').addEventListener('click',()=>addRecord(salMonSel.value||''));
+  el.querySelector('#add-extra-only-btn').addEventListener('click',()=>addExtraOnly(salMonSel.value||''));
   el.querySelector('#clear-month-btn').addEventListener('click',()=>{
     const m=salMonSel.value;
     if(!m||!confirm(formatMonth(m)+'のデータを全て削除しますか？'))return;
@@ -775,6 +777,68 @@ function editRecord(id){
       trainingDay:document.getElementById('e8').checked
     };
     closeModal();saveSalaryData();renderSalaryTable(salaryDb.records[idx].month);
+  });
+}
+
+function addExtraOnly(month){
+  const names=[...new Set([...salaryDb.records.map(r=>r.staffName),...Object.keys(salaryDb.staffSettings)])];
+  document.getElementById('modal-title').textContent='手当・立替のみ追加';
+  document.getElementById('modal-body').innerHTML=`
+    <div class="alert alert-info mb12" style="font-size:11px;">売上なしで手当・立替金のみ給与に加算します。給与計算には影響しません。</div>
+    <div class="form-group"><label class="form-label">スタッフ名</label>
+      <select class="form-control" id="eo-staff"><option value="">-- 選択 --</option>${names.map(n=>`<option>${esc(n)}</option>`).join('')}</select></div>
+    <div class="form-group"><label class="form-label">日付</label>
+      <input class="form-control" type="date" id="eo-date" value="${month?month+'-01':''}"/></div>
+    <div class="form-group"><label class="form-label">備考</label>
+      <input class="form-control" id="eo-memo" placeholder="例: 備品購入立替、特別手当"/></div>
+    <div id="eo-extras-list"></div>
+    <button class="btn btn-outline btn-sm mt8" id="eo-add-item-btn">＋ 項目を追加</button>`;
+  document.getElementById('modal-footer').innerHTML=
+    '<button class="btn btn-primary" id="save-eo-btn">追加</button><button class="btn btn-outline" onclick="closeModal()">キャンセル</button>';
+  document.getElementById('modal').style.display='flex';
+
+  let eoExtras=[{memo:'',amount:0}];
+  const renderEoExtras=()=>{
+    document.getElementById('eo-extras-list').innerHTML=eoExtras.map((e,i)=>`
+      <div class="flex gap8 items-c mb8">
+        <input class="form-control" style="flex:1;" placeholder="内容（例: 立替金、特別手当）" value="${esc(e.memo||'')}" onchange="window._eoExtras[${i}].memo=this.value"/>
+        <input class="form-control" style="width:110px;" type="number" placeholder="金額" value="${e.amount||0}" onchange="window._eoExtras[${i}].amount=+this.value"/>
+        <button class="btn btn-red btn-sm" onclick="window._eoExtras.splice(${i},1);window._renderEoExtras()">削除</button>
+      </div>`).join('');
+  };
+  window._eoExtras=eoExtras;
+  window._renderEoExtras=renderEoExtras;
+  renderEoExtras();
+
+  document.getElementById('eo-add-item-btn').addEventListener('click',()=>{
+    window._eoExtras.push({memo:'',amount:0});
+    window._renderEoExtras();
+  });
+
+  document.getElementById('save-eo-btn').addEventListener('click',()=>{
+    const staffName=document.getElementById('eo-staff').value;
+    const date=document.getElementById('eo-date').value;
+    const memo=document.getElementById('eo-memo').value;
+    if(!staffName){alert('スタッフを選択してください');return;}
+    if(!date){alert('日付を入力してください');return;}
+    const validExtras=window._eoExtras.filter(e=>e.amount);
+    if(!validExtras.length){alert('金額を入力してください');return;}
+    const rec={
+      id:salaryDb.nextId++,
+      month:date.slice(0,7)||month,
+      staffName,date,
+      location:'',
+      salesAmount:0,
+      workHours:'',
+      transport:0,
+      route:'',
+      memo,
+      trainingDay:false,
+      manualPay:0,  // 給与計算を0に固定
+      extras:validExtras
+    };
+    salaryDb.records.push(rec);
+    closeModal();saveSalaryData();showPage('salary');
   });
 }
 
