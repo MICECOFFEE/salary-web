@@ -223,6 +223,7 @@ function defaultSalaryDb(){
     company:{name:'株式会社 100g COFFEE',postal:'',address:'',tel:'',email:'',bank:'',invoiceNo:''},
     staffSettings:{},
     records:[],    // {id,month,staffName,date,location,salesAmount,workHours,transport,route,memo,manualPay,trainingDay,extras:[]}
+    monthlyExtras:[]  // {id,month,staffName,memo,amount} 日付なし手当
     nextId:1
   };
 }
@@ -271,6 +272,7 @@ async function loadSalaryData(){
       if(!salaryDb.company)salaryDb.company={};
       if(!salaryDb.staffSettings)salaryDb.staffSettings={};
       if(!salaryDb.records)salaryDb.records=[];
+      if(!salaryDb.monthlyExtras)salaryDb.monthlyExtras=[];
     }
   }catch(e){console.error(e);}
   showPage('dashboard');
@@ -649,6 +651,8 @@ function renderSalaryTable(month){
 
   const totalPay=recs.reduce((s,r)=>s+getTotalPay(r),0);
   const totalTr=recs.reduce((s,r)=>s+(Number(r.transport)||0),0);
+  const mExtras=(salaryDb.monthlyExtras||[]).filter(e=>e.month===month);
+  const mExtrasTotal=mExtras.reduce((s,e)=>s+Number(e.amount||0),0);
 
   tbl.innerHTML=`
     <div class="alert alert-info mb8" style="font-size:11px;">💡 給与額のセルを直接クリックして手動修正できます。</div>
@@ -678,7 +682,23 @@ function renderSalaryTable(month){
       }).join('')}
       </tbody>
       <tfoot><tr><td colspan="9" class="bold">合計</td><td class="tr bold">${formatMoney(recs.reduce((s,r)=>s+getTotalPay(r)+(Number(r.transport)||0),0))}</td><td></td></tr></tfoot>
-    </table></div>`;
+    </table></div>
+    ${mExtras.length?`
+    <div class="mt12">
+      <div class="card-title">📋 日付なし手当・立替</div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>スタッフ</th><th>内容</th><th class="tr">金額</th><th>操作</th></tr></thead>
+        <tbody>${mExtras.map(e=>`<tr>
+          <td><strong>${esc(e.staffName)}</strong></td>
+          <td>${esc(e.memo||'')}</td>
+          <td class="tr bold">${formatMoney(e.amount)}</td>
+          <td><button class="btn btn-red btn-sm me-del-btn" data-id="${e.id}">削除</button></td>
+        </tr>`).join('')}</tbody>
+        <tfoot><tr><td colspan="2" class="bold">小計</td><td class="tr bold">${formatMoney(mExtrasTotal)}</td><td></td></tr></tfoot>
+      </table></div>
+    </div>`:''}
+    <div class="mt12 bold" style="text-align:right;font-size:14px;">月合計: ${formatMoney(recs.reduce((s,r)=>s+getTotalPay(r)+(Number(r.transport)||0),0)+mExtrasTotal)}</div>
+    `;
 
   // 手動給与修正
   tbl.querySelectorAll('.manual-pay-input').forEach(inp=>{
@@ -701,6 +721,11 @@ function renderSalaryTable(month){
         inp.value=calcPay(rec);
     });
   });
+  tbl.querySelectorAll('.me-del-btn').forEach(b=>b.addEventListener('click',()=>{
+    if(!confirm('削除しますか？'))return;
+    salaryDb.monthlyExtras=salaryDb.monthlyExtras.filter(e=>e.id!==Number(b.dataset.id));
+    saveSalaryData();renderSalaryTable(month);
+  }));
   tbl.querySelectorAll('.extras-btn').forEach(b=>b.addEventListener('click',()=>editExtras(Number(b.dataset.id),month)));
   tbl.querySelectorAll('.rec-edit-btn').forEach(b=>b.addEventListener('click',()=>editRecord(Number(b.dataset.id))));
   tbl.querySelectorAll('.rec-del-btn').forEach(b=>b.addEventListener('click',()=>{
@@ -782,15 +807,24 @@ function editRecord(id){
 
 function addExtraOnly(month){
   const names=[...new Set([...salaryDb.records.map(r=>r.staffName),...Object.keys(salaryDb.staffSettings)])];
-  document.getElementById('modal-title').textContent='手当・立替のみ追加';
+  document.getElementById('modal-title').textContent='手当・立替を追加';
   document.getElementById('modal-body').innerHTML=`
-    <div class="alert alert-info mb12" style="font-size:11px;">売上なしで手当・立替金のみ給与に加算します。給与計算には影響しません。</div>
     <div class="form-group"><label class="form-label">スタッフ名</label>
       <select class="form-control" id="eo-staff"><option value="">-- 選択 --</option>${names.map(n=>`<option>${esc(n)}</option>`).join('')}</select></div>
-    <div class="form-group"><label class="form-label">日付</label>
+    <div class="form-group"><label class="form-label">種別</label>
+      <div class="flex gap8">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:8px 12px;border:1px solid var(--border);border-radius:8px;flex:1;">
+          <input type="radio" name="eo-type" value="monthly" checked onchange="document.getElementById('eo-date-wrap').style.display='none'"/>
+          <span>📋 日付なし<br><span style="font-size:10px;color:var(--text3);">月単位の手当・立替</span></span>
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:8px 12px;border:1px solid var(--border);border-radius:8px;flex:1;">
+          <input type="radio" name="eo-type" value="daily" onchange="document.getElementById('eo-date-wrap').style.display='block'"/>
+          <span>📅 日付あり<br><span style="font-size:10px;color:var(--text3);">特定日の立替など</span></span>
+        </label>
+      </div>
+    </div>
+    <div id="eo-date-wrap" style="display:none;" class="form-group"><label class="form-label">日付</label>
       <input class="form-control" type="date" id="eo-date" value="${month?month+'-01':''}"/></div>
-    <div class="form-group"><label class="form-label">備考</label>
-      <input class="form-control" id="eo-memo" placeholder="例: 備品購入立替、特別手当"/></div>
     <div id="eo-extras-list"></div>
     <button class="btn btn-outline btn-sm mt8" id="eo-add-item-btn">＋ 項目を追加</button>`;
   document.getElementById('modal-footer').innerHTML=
@@ -817,28 +851,30 @@ function addExtraOnly(month){
 
   document.getElementById('save-eo-btn').addEventListener('click',()=>{
     const staffName=document.getElementById('eo-staff').value;
-    const date=document.getElementById('eo-date').value;
-    const memo=document.getElementById('eo-memo').value;
+    const type=document.querySelector('input[name="eo-type"]:checked').value;
+    const date=document.getElementById('eo-date')?.value||'';
     if(!staffName){alert('スタッフを選択してください');return;}
-    if(!date){alert('日付を入力してください');return;}
+    if(type==='daily'&&!date){alert('日付を入力してください');return;}
     const validExtras=window._eoExtras.filter(e=>e.amount);
     if(!validExtras.length){alert('金額を入力してください');return;}
-    const rec={
-      id:salaryDb.nextId++,
-      month:date.slice(0,7)||month,
-      staffName,date,
-      location:'',
-      salesAmount:0,
-      workHours:'',
-      transport:0,
-      route:'',
-      memo,
-      trainingDay:false,
-      manualPay:0,  // 給与計算を0に固定
-      extras:validExtras
-    };
-    salaryDb.records.push(rec);
-    closeModal();saveSalaryData();showPage('salary');
+
+    if(type==='monthly'){
+      // 日付なし → monthlyExtrasに追加
+      if(!salaryDb.monthlyExtras)salaryDb.monthlyExtras=[];
+      validExtras.forEach(e=>{
+        salaryDb.monthlyExtras.push({id:salaryDb.nextId++,month,staffName,memo:e.memo,amount:e.amount});
+      });
+    } else {
+      // 日付あり → recordsに追加（売上0、給与0固定）
+      const rec={
+        id:salaryDb.nextId++,
+        month:date.slice(0,7)||month,
+        staffName,date,location:'',salesAmount:0,workHours:'',transport:0,route:'',
+        memo:'',trainingDay:false,manualPay:0,extras:validExtras
+      };
+      salaryDb.records.push(rec);
+    }
+    closeModal();saveSalaryData();renderSalaryTable(month);
   });
 }
 
@@ -1067,10 +1103,12 @@ function buildDocHtml(staffName,month,payDate,type,recs){
   const totalPay=recs.reduce((s,r)=>s+getTotalPay(r),0);
   const totalTr=recs.reduce((s,r)=>s+(Number(r.transport)||0),0);
   const totalAmt=totalPay+totalTr;
-  // 手当・立替の集計
+  // 手当・立替の集計（日付あり＋日付なし）
   const allExtras=recs.flatMap(r=>(r.extras||[]).filter(e=>e.amount));
+  const mExtrasForDoc=(salaryDb.monthlyExtras||[]).filter(e=>e.month===month&&e.staffName===staffName);
   const extrasTotal=allExtras.reduce((s,e)=>s+Number(e.amount||0),0);
-  const grandTotal=totalAmt+extrasTotal;
+  const mExtrasForDocTotal=mExtrasForDoc.reduce((s,e)=>s+Number(e.amount||0),0);
+  const grandTotal=totalAmt+extrasTotal+mExtrasForDocTotal;
   const detailRows=recs.map(r=>{
     const pay=getEffectivePay(r);
     const tr2=Number(r.transport)||0;
@@ -1078,11 +1116,11 @@ function buildDocHtml(staffName,month,payDate,type,recs){
     const isTrainingDay=r.trainingDay&&ss2.isTraining;
     return `<tr><td>${r.date}</td><td>${r.location||''}</td><td style="text-align:right;">${r.workHours||'-'}</td><td style="text-align:right;">${formatMoney(r.salesAmount)}</td><td style="text-align:right;">${formatMoney(pay)}${isTrainingDay?'<span style="font-size:9px;color:#6B2FA0;"> (研修)</span>':''}</td><td style="text-align:right;">${formatMoney(tr2)}</td></tr>`;
   }).join('');
-  const extrasRows=allExtras.map(e=>`<tr><td colspan="4" style="padding:5px 7px;border:1px solid #ddd;">${esc(e.memo||'手当')}</td><td style="padding:5px 7px;border:1px solid #ddd;text-align:right;">${formatMoney(e.amount)}</td><td style="padding:5px 7px;border:1px solid #ddd;"></td></tr>`).join('');
+  const extrasRows=[...allExtras,...mExtrasForDoc].map(e=>`<tr><td colspan="4" style="padding:5px 7px;border:1px solid #ddd;">${esc(e.memo||'手当')}</td><td style="padding:5px 7px;border:1px solid #ddd;text-align:right;">${formatMoney(e.amount)}</td><td style="padding:5px 7px;border:1px solid #ddd;"></td></tr>`).join('');
   const detailTable=`<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:8px;">
     <thead><tr style="background:#f5f5f5;">${['日付','場所','時間','売上','給与','交通費'].map(h=>`<th style="padding:5px 7px;border:1px solid #ddd;text-align:left;">${h}</th>`).join('')}</tr></thead>
     <tbody>${detailRows}${extrasRows}</tbody>
-    <tfoot><tr style="font-weight:700;"><td colspan="4" style="padding:5px 7px;border:1px solid #ddd;">合計（${recs.length}日）</td><td style="padding:5px 7px;border:1px solid #ddd;text-align:right;">${formatMoney(totalPay+extrasTotal)}</td><td style="padding:5px 7px;border:1px solid #ddd;text-align:right;">${formatMoney(totalTr)}</td></tr></tfoot>
+    <tfoot><tr style="font-weight:700;"><td colspan="4" style="padding:5px 7px;border:1px solid #ddd;">合計（${recs.length}日）</td><td style="padding:5px 7px;border:1px solid #ddd;text-align:right;">${formatMoney(totalPay+extrasTotal+mExtrasForDocTotal)}</td><td style="padding:5px 7px;border:1px solid #ddd;text-align:right;">${formatMoney(totalTr)}</td></tr></tfoot>
   </table>`;
   if(type==='invoice'){
     return `<div style="max-width:780px;margin:0 auto;padding:24px;background:white;border:1px solid #ddd;font-family:'Noto Sans JP',sans-serif;">
