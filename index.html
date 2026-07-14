@@ -685,16 +685,17 @@ function renderSalaryTable(month){
     </table></div>
     ${mExtras.length?`
     <div class="mt12">
-      <div class="card-title">📋 日付なし手当・立替</div>
+      <div class="card-title">📋 手当・立替</div>
       <div class="table-wrap"><table>
-        <thead><tr><th>スタッフ</th><th>内容</th><th class="tr">金額</th><th>操作</th></tr></thead>
+        <thead><tr><th>スタッフ</th><th>日付</th><th>内容</th><th class="tr">金額</th><th>操作</th></tr></thead>
         <tbody>${mExtras.map(e=>`<tr>
           <td><strong>${esc(e.staffName)}</strong></td>
+          <td>${e.date?e.date:'<span class="badge badge-gray">日付なし</span>'}</td>
           <td>${esc(e.memo||'')}</td>
           <td class="tr bold">${formatMoney(e.amount)}</td>
           <td><button class="btn btn-red btn-sm me-del-btn" data-id="${e.id}">削除</button></td>
         </tr>`).join('')}</tbody>
-        <tfoot><tr><td colspan="2" class="bold">小計</td><td class="tr bold">${formatMoney(mExtrasTotal)}</td><td></td></tr></tfoot>
+        <tfoot><tr><td colspan="3" class="bold">小計</td><td class="tr bold">${formatMoney(mExtrasTotal)}</td><td></td></tr></tfoot>
       </table></div>
     </div>`:''}
     <div class="mt12 bold" style="text-align:right;font-size:14px;">月合計: ${formatMoney(recs.reduce((s,r)=>s+getTotalPay(r)+(Number(r.transport)||0),0)+mExtrasTotal)}</div>
@@ -858,21 +859,17 @@ function addExtraOnly(month){
     const validExtras=window._eoExtras.filter(e=>e.amount);
     if(!validExtras.length){alert('金額を入力してください');return;}
 
+    if(!salaryDb.monthlyExtras)salaryDb.monthlyExtras=[];
     if(type==='monthly'){
       // 日付なし → monthlyExtrasに追加
-      if(!salaryDb.monthlyExtras)salaryDb.monthlyExtras=[];
       validExtras.forEach(e=>{
-        salaryDb.monthlyExtras.push({id:salaryDb.nextId++,month,staffName,memo:e.memo,amount:e.amount});
+        salaryDb.monthlyExtras.push({id:salaryDb.nextId++,month,staffName,memo:e.memo,amount:e.amount,date:''});
       });
     } else {
-      // 日付あり → recordsに追加（売上0、給与0固定）
-      const rec={
-        id:salaryDb.nextId++,
-        month:date.slice(0,7)||month,
-        staffName,date,location:'',salesAmount:0,workHours:'',transport:0,route:'',
-        memo:'',trainingDay:false,manualPay:0,extras:validExtras
-      };
-      salaryDb.records.push(rec);
+      // 日付あり → monthlyExtrasに日付付きで追加（空白行を作らない）
+      validExtras.forEach(e=>{
+        salaryDb.monthlyExtras.push({id:salaryDb.nextId++,month,staffName,memo:e.memo,amount:e.amount,date});
+      });
     }
     closeModal();saveSalaryData();renderSalaryTable(month);
   });
