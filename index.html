@@ -908,7 +908,7 @@ function addRecord(month){
    STAFF SETTINGS
 ======================== */
 pages.staff=function(el){
-  const names=[...new Set([...salaryDb.records.map(r=>r.staffName),...Object.keys(salaryDb.staffSettings)])];
+  const names=Object.keys(salaryDb.staffSettings);
   el.innerHTML=`
     <div class="card">
       <div class="card-title">スタッフ設定</div>
@@ -988,8 +988,13 @@ pages.staff=function(el){
   });
   el.querySelectorAll('.del-staff-btn').forEach(b=>b.addEventListener('click',()=>{
     const name=b.dataset.name;
-    if(!confirm(name+'を削除しますか？'))return;
-    delete salaryDb.staffSettings[name];saveSalaryData();showPage('staff');
+    const hasRecords=salaryDb.records.some(r=>r.staffName===name);
+    const msg=hasRecords?name+'を削除しますか？\n（勤務記録が'+salaryDb.records.filter(r=>r.staffName===name).length+'件あります。設定のみ削除されます）':name+'を削除しますか？';
+    if(!confirm(msg))return;
+    delete salaryDb.staffSettings[name];
+    // staffSettingsから削除後、画面を強制再描画
+    salaryDb=Object.assign({},salaryDb);
+    saveSalaryData();showPage('staff');
   }));
 };
 
@@ -1028,6 +1033,10 @@ pages.documents=function(el){
           <input class="form-control" type="date" id="doc-paydate"/></div>
       </div>
       <div class="form-group"><label class="form-label">スタッフ</label>
+        <div class="flex gap8 mb8">
+          <button class="btn btn-outline btn-sm" onclick="document.querySelectorAll('input[name=doc-staff-cb]').forEach(cb=>cb.checked=true)">全選択</button>
+          <button class="btn btn-outline btn-sm" onclick="document.querySelectorAll('input[name=doc-staff-cb]').forEach(cb=>cb.checked=false)">全解除</button>
+        </div>
         <div id="doc-staff-list" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px;"></div>
       </div>
       <div class="btn-group mt8">
@@ -1081,7 +1090,8 @@ function generateAllDocs(){
 }
 function getDocType(name){
   const ss=getStaffSetting(name);
-  if(ss.type==='時給')return 'payslip';
+  // 現在の給与タイプと雇用形態で判定
+  if(ss.type==='時給'&&ss.employment!=='外部委託')return 'payslip';
   return (ss.employment==='外部委託'||!ss.employment)?'invoice':'payslip';
 }
 function generateDocFor(name,month,payDate,type){
