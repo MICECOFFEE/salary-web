@@ -690,7 +690,7 @@ function renderSalaryTable(month){
         <thead><tr><th>スタッフ</th><th>日付</th><th>内容</th><th class="tr">金額</th><th>操作</th></tr></thead>
         <tbody>${mExtras.map(e=>`<tr>
           <td><strong>${esc(e.staffName)}</strong></td>
-          <td>${e.date?e.date:'<span class="badge badge-gray">日付なし</span>'}</td>
+          <td>${e.date||'—'}</td>
           <td>${esc(e.memo||'')}</td>
           <td class="tr bold">${formatMoney(e.amount)}</td>
           <td><button class="btn btn-red btn-sm me-del-btn" data-id="${e.id}">削除</button></td>
