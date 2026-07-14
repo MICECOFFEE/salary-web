@@ -1113,7 +1113,7 @@ function buildDocHtml(staffName,month,payDate,type,recs){
     const isTrainingDay=r.trainingDay&&ss2.isTraining;
     return `<tr><td>${r.date}</td><td>${r.location||''}</td><td style="text-align:right;">${r.workHours||'-'}</td><td style="text-align:right;">${formatMoney(r.salesAmount)}</td><td style="text-align:right;">${formatMoney(pay)}${isTrainingDay?'<span style="font-size:9px;color:#6B2FA0;"> (研修)</span>':''}</td><td style="text-align:right;">${formatMoney(tr2)}</td></tr>`;
   }).join('');
-  const extrasRows=[...allExtras,...mExtrasForDoc].map(e=>`<tr><td colspan="4" style="padding:5px 7px;border:1px solid #ddd;">${esc(e.memo||'手当')}</td><td style="padding:5px 7px;border:1px solid #ddd;text-align:right;">${formatMoney(e.amount)}</td><td style="padding:5px 7px;border:1px solid #ddd;"></td></tr>`).join('');
+  const extrasRows=[...allExtras,...mExtrasForDoc].map(e=>`<tr><td>${e.date||'-'}</td><td colspan="3" style="padding:5px 7px;border:1px solid #ddd;">${esc(e.memo||'手当')}</td><td style="padding:5px 7px;border:1px solid #ddd;text-align:right;">${formatMoney(e.amount)}</td><td style="padding:5px 7px;border:1px solid #ddd;"></td></tr>`).join('');
   const detailTable=`<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:8px;">
     <thead><tr style="background:#f5f5f5;">${['日付','場所','時間','売上','給与','交通費'].map(h=>`<th style="padding:5px 7px;border:1px solid #ddd;text-align:left;">${h}</th>`).join('')}</tr></thead>
     <tbody>${detailRows}${extrasRows}</tbody>
