@@ -756,6 +756,47 @@ function renderSalaryTable(month){
     window._docPreset={name:b.dataset.name,month:b.dataset.month};showPage('documents');
   }));
 
+  // イベント委譲：tbl全体で各ボタン・入力を処理
+  tbl.addEventListener('change',e=>{
+    const inp=e.target.closest('.manual-pay-input');
+    if(inp){
+      const id=Number(inp.dataset.id);
+      const rec=salaryDb.records.find(r=>r.id===id);
+      if(!rec)return;
+      const v=inp.value.trim();
+      rec.manualPay=(v==='')?undefined:Number(v);
+      saveSalaryData();
+      inp.style.color=(v==='')?'':'var(--amber)';
+      inp.style.fontWeight=(v==='')?'':'700';
+    }
+  });
+  tbl.addEventListener('focus',e=>{
+    const inp=e.target.closest('.manual-pay-input');
+    if(inp){
+      const id=Number(inp.dataset.id);
+      const rec=salaryDb.records.find(r=>r.id===id);
+      if(rec&&(rec.manualPay===undefined||rec.manualPay===null||rec.manualPay===''))
+        inp.value=calcPay(rec);
+    }
+  },true);
+  tbl.addEventListener('click',e=>{
+    const meDel=e.target.closest('.me-del-btn');
+    if(meDel){
+      if(!confirm('削除しますか？'))return;
+      salaryDb.monthlyExtras=salaryDb.monthlyExtras.filter(ex=>ex.id!==Number(meDel.dataset.id));
+      saveSalaryData();renderSalaryTable(month);return;
+    }
+    const extBtn=e.target.closest('.extras-btn');
+    if(extBtn){editExtras(Number(extBtn.dataset.id),month);return;}
+    const editBtn=e.target.closest('.rec-edit-btn');
+    if(editBtn){editRecord(Number(editBtn.dataset.id));return;}
+    const delBtn=e.target.closest('.rec-del-btn');
+    if(delBtn){
+      if(!confirm('削除しますか？'))return;
+      salaryDb.records=salaryDb.records.filter(r=>r.id!==Number(delBtn.dataset.id));
+      saveSalaryData();renderSalaryTable(month);return;
+    }
+  });
 
 }
 
