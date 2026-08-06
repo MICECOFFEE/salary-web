@@ -695,7 +695,7 @@ function renderSalaryTable(month){
     <div class="alert alert-info mb8" style="font-size:11px;">💡 スタッフ行をクリックで詳細表示。支給額を直接編集できます。</div>
     <div class="table-wrap"><table id="salary-main-table">
       <thead><tr><th>スタッフ</th><th>給与タイプ</th><th class="tr">出勤日数</th><th class="tr">売上合計</th><th class="tr">報酬合計</th><th class="tr">交通費</th><th class="tr">手当・立替</th><th class="tr">月合計</th><th>操作</th></tr></thead>
-      <tbody>${staffGroups.map(g=>{
+      <tbody>${staffGroups.map((g,gIdx)=>{
         const ss2=getStaffSetting(g.name);
         const typeCls=ss2.isTraining?'badge-training':'badge-green';
         const typeLabel=ss2.isTraining?'研修中':ss2.type||'歩合';
