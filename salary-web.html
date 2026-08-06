@@ -344,9 +344,12 @@ function getStaffSetting(name){
 
 function calcPay(record){
   const s=getStaffSetting(record.staffName);
-  // 研修中の日は研修日給を使用
-  if(record.trainingDay&&s.isTraining){
-    return Number(s.trainingDayRate)||8000;
+  // 研修中フラグがONの場合：売上が0または研修日フラグがあれば研修日給
+  if(s.isTraining){
+    const sales=Number(record.salesAmount)||0;
+    if(record.trainingDay||sales===0){
+      return Number(s.trainingDayRate)||8000;
+    }
   }
   const type=s.type||'歩合';
   const sales=Number(record.salesAmount)||0;
@@ -654,34 +657,69 @@ function renderSalaryTable(month){
   const mExtras=(salaryDb.monthlyExtras||[]).filter(e=>e.month===month);
   const mExtrasTotal=mExtras.reduce((s,e)=>s+Number(e.amount||0),0);
 
+
+  // スタッフ別グループ
+  const staffGroups=[...new Set(recs.map(r=>r.staffName))].map(name=>{
+    const sr=recs.filter(r=>r.staffName===name);
+    const pay=sr.reduce((s,r)=>s+getTotalPay(r),0);
+    const tr2=sr.reduce((s,r)=>s+(Number(r.transport)||0),0);
+    const me=(salaryDb.monthlyExtras||[]).filter(e=>e.month===month&&e.staffName===name);
+    const meTotal=me.reduce((s,e)=>s+Number(e.amount||0),0);
+    const sales=sr.reduce((s,r)=>s+(Number(r.salesAmount)||0),0);
+    return{name,sr,pay,tr:tr2,meTotal,total:pay+tr2+meTotal,sales};
+  });
+
+  const buildDetailRows=(g)=>{
+    const ss=getStaffSetting(g.name);
+    return g.sr.map(r=>{
+      const calcP=calcPay(r);
+      const effectiveP=getEffectivePay(r);
+      const isManual=(r.manualPay!==undefined&&r.manualPay!==null&&r.manualPay!=='');
+      const extrasT=getExtrasTotal(r);
+      const trDay=r.trainingDay&&ss.isTraining;
+      return `<tr data-id="${r.id}">
+        <td style="padding:5px 9px;">${r.date}${trDay?'<span class="badge badge-training" style="margin-left:4px;font-size:9px;">研修</span>':''}</td>
+        <td>${esc(r.location||'')}</td>
+        <td>${r.workHours||'-'}</td>
+        <td class="tr">${formatMoney(r.salesAmount)}</td>
+        <td class="tr muted">${isManual?`<s>${formatMoney(calcP)}</s>`:formatMoney(calcP)}</td>
+        <td class="tr"><input class="edit-input manual-pay-input" data-id="${r.id}" type="number" value="${effectiveP}" style="width:85px;${isManual?'color:var(--amber);font-weight:700;':''}"/></td>
+        <td class="tr">${formatMoney(r.transport)}</td>
+        <td class="tr"><button class="btn btn-outline btn-sm extras-btn" data-id="${r.id}" style="font-size:10px;">${extrasT?formatMoney(extrasT)+'✏️':'＋手当'}</button></td>
+        <td><button class="btn btn-outline btn-sm rec-edit-btn" data-id="${r.id}">編集</button> <button class="btn btn-red btn-sm rec-del-btn" data-id="${r.id}">削除</button></td>
+      </tr>`;
+    }).join('');
+  };
+
   tbl.innerHTML=`
-    <div class="alert alert-info mb8" style="font-size:11px;">💡 給与額のセルを直接クリックして手動修正できます。</div>
-    <div class="table-wrap"><table>
-      <thead><tr><th>スタッフ</th><th>日付</th><th>場所</th><th class="tr">売上</th><th>勤務時間</th><th class="tr">交通費</th><th class="tr">計算給与</th><th class="tr">支給額</th><th class="tr">手当・立替</th><th class="tr">合計</th><th>操作</th></tr></thead>
-      <tbody>${recs.map(r=>{
-        const calcP=calcPay(r);
-        const effectiveP=getEffectivePay(r);
-        const isManual=(r.manualPay!==undefined&&r.manualPay!==null&&r.manualPay!=='');
-        const ss=getStaffSetting(r.staffName);
-        const trDay=r.trainingDay&&ss.isTraining;
-        return `<tr data-id="${r.id}">
-          <td><strong>${esc(r.staffName)}</strong>${trDay?'<span class="badge badge-training" style="margin-left:4px;">研修</span>':''}</td>
-          <td>${r.date}</td><td>${esc(r.location||'')}</td>
-          <td class="tr">${formatMoney(r.salesAmount)}</td>
-          <td>${r.workHours||'-'}</td>
-          <td class="tr">${formatMoney(r.transport)}</td>
-          <td class="tr muted">${isManual?`<span style="text-decoration:line-through;">${formatMoney(calcP)}</span>`:formatMoney(calcP)}</td>
-          <td class="tr"><input class="edit-input manual-pay-input" data-id="${r.id}" type="number" value="${effectiveP}" title="クリックして手動修正（空欄=自動計算）" style="width:90px;${isManual?'color:var(--amber);font-weight:700;':''}"/></td>
-          <td class="tr"><button class="btn btn-outline btn-sm extras-btn" data-id="${r.id}" style="font-size:10px;">${(r.extras&&r.extras.length)?formatMoney(getExtrasTotal(r))+'✏️':'＋手当'}</button></td>
-          <td class="tr bold">${formatMoney(getTotalPay(r)+(Number(r.transport)||0))}</td>
-          <td>
-            <button class="btn btn-outline btn-sm rec-edit-btn" data-id="${r.id}">編集</button>
-            <button class="btn btn-red btn-sm rec-del-btn" data-id="${r.id}" style="margin-left:4px;">削除</button>
-          </td>
-        </tr>`;
+    <div class="alert alert-info mb8" style="font-size:11px;">💡 スタッフ行をクリックで詳細表示。支給額を直接編集できます。</div>
+    <div class="table-wrap"><table id="salary-main-table">
+      <thead><tr><th>スタッフ</th><th>給与タイプ</th><th class="tr">出勤日数</th><th class="tr">売上合計</th><th class="tr">報酬合計</th><th class="tr">交通費</th><th class="tr">手当・立替</th><th class="tr">月合計</th><th>操作</th></tr></thead>
+      <tbody>${staffGroups.map(g=>{
+        const ss2=getStaffSetting(g.name);
+        const typeCls=ss2.isTraining?'badge-training':'badge-green';
+        const typeLabel=ss2.isTraining?'研修中':ss2.type||'歩合';
+        const safeId='detail_'+g.name.replace(/[^a-zA-Z0-9]/g,'_');
+        return `<tr class="staff-sum-row" data-detail="${safeId}" style="cursor:pointer;background:var(--surface2);">
+          <td><strong>${esc(g.name)}</strong> <span class="arrow-icon">▶</span></td>
+          <td><span class="badge ${typeCls}">${typeLabel}</span></td>
+          <td class="tr">${g.sr.length}日</td>
+          <td class="tr">${formatMoney(g.sales)}</td>
+          <td class="tr bold">${formatMoney(g.pay)}</td>
+          <td class="tr">${formatMoney(g.tr)}</td>
+          <td class="tr">${g.meTotal?formatMoney(g.meTotal):'-'}</td>
+          <td class="tr bold">${formatMoney(g.total)}</td>
+          <td><button class="btn btn-outline btn-sm doc-jump-btn" data-name="${esc(g.name)}" data-month="${month}">明細</button></td>
+        </tr>
+        <tr id="${safeId}" style="display:none;"><td colspan="9" style="padding:0;border-bottom:2px solid var(--green);">
+          <table style="width:100%;border-collapse:collapse;font-size:11px;">
+            <thead><tr style="background:var(--surface2);"><th style="padding:5px 9px;">日付</th><th>場所</th><th>時間</th><th class="tr">売上</th><th class="tr">計算</th><th class="tr">支給額</th><th class="tr">交通費</th><th class="tr">手当</th><th>操作</th></tr></thead>
+            <tbody>${buildDetailRows(g)}</tbody>
+          </table>
+        </td></tr>`;
       }).join('')}
       </tbody>
-      <tfoot><tr><td colspan="9" class="bold">合計</td><td class="tr bold">${formatMoney(recs.reduce((s,r)=>s+getTotalPay(r)+(Number(r.transport)||0),0))}</td><td></td></tr></tfoot>
+      <tfoot><tr><td colspan="7" class="bold">月合計</td><td class="tr bold">${formatMoney(recs.reduce((s,r)=>s+getTotalPay(r)+(Number(r.transport)||0),0)+mExtrasTotal)}</td><td></td></tr></tfoot>
     </table></div>
     ${mExtras.length?`
     <div class="mt12">
@@ -701,39 +739,24 @@ function renderSalaryTable(month){
     <div class="mt12 bold" style="text-align:right;font-size:14px;">月合計: ${formatMoney(recs.reduce((s,r)=>s+getTotalPay(r)+(Number(r.transport)||0),0)+mExtrasTotal)}</div>
     `;
 
-  // 手動給与修正
-  tbl.querySelectorAll('.manual-pay-input').forEach(inp=>{
-    inp.addEventListener('change',()=>{
-      const id=Number(inp.dataset.id);
-      const rec=salaryDb.records.find(r=>r.id===id);
-      if(!rec)return;
-      const v=inp.value.trim();
-      rec.manualPay=(v==='')?undefined:Number(v);
-      saveSalaryData();
-      // スタイル更新
-      inp.style.color=(v==='')?'':'var(--amber)';
-      inp.style.fontWeight=(v==='')?'':'700';
-    });
-    // フォーカス時に自動計算値を表示
-    inp.addEventListener('focus',()=>{
-      const id=Number(inp.dataset.id);
-      const rec=salaryDb.records.find(r=>r.id===id);
-      if(rec&&(rec.manualPay===undefined||rec.manualPay===null||rec.manualPay===''))
-        inp.value=calcPay(rec);
+  // 折りたたみ
+  tbl.querySelectorAll('.staff-sum-row').forEach(row=>{
+    row.addEventListener('click',(e)=>{
+      if(e.target.closest('button'))return;
+      const detailId=row.dataset.detail;
+      const detailRow=document.getElementById(detailId);
+      if(!detailRow)return;
+      const isHidden=detailRow.style.display==='none';
+      detailRow.style.display=isHidden?'table-row':'none';
+      const arrow=row.querySelector('.arrow-icon');
+      if(arrow)arrow.textContent=isHidden?'▼':'▶';
     });
   });
-  tbl.querySelectorAll('.me-del-btn').forEach(b=>b.addEventListener('click',()=>{
-    if(!confirm('削除しますか？'))return;
-    salaryDb.monthlyExtras=salaryDb.monthlyExtras.filter(e=>e.id!==Number(b.dataset.id));
-    saveSalaryData();renderSalaryTable(month);
+  tbl.querySelectorAll('.doc-jump-btn').forEach(b=>b.addEventListener('click',()=>{
+    window._docPreset={name:b.dataset.name,month:b.dataset.month};showPage('documents');
   }));
-  tbl.querySelectorAll('.extras-btn').forEach(b=>b.addEventListener('click',()=>editExtras(Number(b.dataset.id),month)));
-  tbl.querySelectorAll('.rec-edit-btn').forEach(b=>b.addEventListener('click',()=>editRecord(Number(b.dataset.id))));
-  tbl.querySelectorAll('.rec-del-btn').forEach(b=>b.addEventListener('click',()=>{
-    if(!confirm('削除しますか？'))return;
-    salaryDb.records=salaryDb.records.filter(r=>r.id!==Number(b.dataset.id));
-    saveSalaryData();renderSalaryTable(month);
-  }));
+
+
 }
 
 function editExtras(id, month){
@@ -912,68 +935,96 @@ pages.staff=function(el){
   el.innerHTML=`
     <div class="card">
       <div class="card-title">スタッフ設定</div>
-      <div class="alert alert-info mb12">給与タイプ・研修設定・振込先を設定します。</div>
+      <button class="btn btn-primary mb12" id="add-staff-btn">＋ スタッフを追加</button>
       ${names.map(name=>{
         const s=getStaffSetting(name);
-        return `<div class="card" style="margin-bottom:10px;">
-          <div class="flex items-c mb8">
-            <input class="form-control" style="font-size:14px;font-weight:700;width:180px;" value="${esc(name)}" data-oldname="${esc(name)}" onchange="renameStaff(this.dataset.oldname,this.value,this)"/>
-            <span class="muted" style="margin-left:6px;font-size:10px;">← 名前を変更可</span>
-            <span class="badge ${s.employment==='会社採用'?'badge-blue':'badge-amber'} ml-a">${s.employment||'外部委託'}</span>
+        const safeId='staff_'+name.replace(/[^a-zA-Z0-9]/g,'_');
+        return `<div class="card" style="margin-bottom:8px;padding:12px 16px;">
+          <div class="flex items-c" style="cursor:pointer;" onclick="toggleStaffCard('${safeId}')">
+            <div style="flex:1;">
+              <span style="font-size:14px;font-weight:700;">${esc(name)}</span>
+              <span class="badge ${s.employment==='会社採用'?'badge-blue':'badge-amber'} ml-a" style="margin-left:8px;">${s.employment||'外部委託'}</span>
+              <span class="badge ${s.isTraining?'badge-training':'badge-green'}" style="margin-left:4px;">${s.isTraining?'研修中':s.type||'歩合'}</span>
+              ${s.parkingFee?`<span class="badge badge-gray" style="margin-left:4px;">駐車場 ${formatMoney(s.parkingFee)}</span>`:''}
+            </div>
+            <span class="staff-arrow-${safeId}" style="color:var(--text3);font-size:12px;">▶ 詳細</span>
           </div>
-          <div class="grid3 mb8">
-            <div class="form-group" style="margin-bottom:0;"><label class="form-label">給与タイプ</label>
-              <select class="form-control" onchange="setSS('${esc(name)}','type',this.value)">
-                <option ${s.type==='歩合'||!s.type?'selected':''}>歩合</option>
-                <option ${s.type==='最低保証'?'selected':''}>最低保証</option>
-                <option ${s.type==='時給'?'selected':''}>時給</option>
-              </select></div>
-            <div class="form-group" style="margin-bottom:0;"><label class="form-label">雇用形態</label>
-              <select class="form-control" onchange="setSS('${esc(name)}','employment',this.value)">
-                <option ${s.employment==='外部委託'||!s.employment?'selected':''}>外部委託</option>
-                <option ${s.employment==='会社採用'?'selected':''}>会社採用</option>
-              </select></div>
-            <div class="form-group" style="margin-bottom:0;"><label class="form-label">歩合率（%）</label>
-              <input class="form-control" type="number" value="${s.rate||20}" onchange="setSS('${esc(name)}','rate',+this.value)"/></div>
+          <div id="${safeId}" style="display:none;margin-top:12px;">
+            <div class="form-group mb8"><label class="form-label">スタッフ名</label>
+              <div class="flex gap8 items-c">
+                <input class="form-control" style="width:200px;" value="${esc(name)}" data-oldname="${esc(name)}" onchange="renameStaff(this.dataset.oldname,this.value,this)"/>
+                <span class="muted" style="font-size:10px;">← 変更可</span>
+              </div>
+            </div>
+            <div class="grid3 mb8">
+              <div class="form-group" style="margin-bottom:0;"><label class="form-label">給与タイプ</label>
+                <select class="form-control" onchange="setSS('${esc(name)}','type',this.value)">
+                  <option ${s.type==='歩合'||!s.type?'selected':''}>歩合</option>
+                  <option ${s.type==='最低保証'?'selected':''}>最低保証</option>
+                  <option ${s.type==='時給'?'selected':''}>時給</option>
+                </select></div>
+              <div class="form-group" style="margin-bottom:0;"><label class="form-label">雇用形態</label>
+                <select class="form-control" onchange="setSS('${esc(name)}','employment',this.value)">
+                  <option ${s.employment==='外部委託'||!s.employment?'selected':''}>外部委託</option>
+                  <option ${s.employment==='会社採用'?'selected':''}>会社採用</option>
+                </select></div>
+              <div class="form-group" style="margin-bottom:0;"><label class="form-label">歩合率（%）</label>
+                <input class="form-control" type="number" value="${s.rate||20}" onchange="setSS('${esc(name)}','rate',+this.value)"/></div>
+            </div>
+            <div class="grid3 mb8">
+              <div class="form-group" style="margin-bottom:0;"><label class="form-label">最低保証額（円）</label>
+                <input class="form-control" type="number" value="${s.minAmount||10000}" onchange="setSS('${esc(name)}','minAmount',+this.value)"/></div>
+              <div class="form-group" style="margin-bottom:0;"><label class="form-label">時給（円）</label>
+                <input class="form-control" type="number" value="${s.hourlyRate||1400}" onchange="setSS('${esc(name)}','hourlyRate',+this.value)"/></div>
+            </div>
+            <div class="divider"></div>
+            <div class="card-title" style="display:flex;align-items:center;gap:8px;">
+              <span>研修設定</span>
+              <label style="display:flex;align-items:center;gap:4px;font-weight:400;font-size:11px;text-transform:none;letter-spacing:0;">
+                <input type="checkbox" onchange="setSS('${esc(name)}','isTraining',this.checked)" ${s.isTraining?'checked':''}/>
+                研修中フラグをON
+              </label>
+            </div>
+            <div class="grid3 mb8">
+              <div class="form-group" style="margin-bottom:0;"><label class="form-label">研修日給（円/日）</label>
+                <input class="form-control" type="number" value="${s.trainingDayRate||8000}" onchange="setSS('${esc(name)}','trainingDayRate',+this.value)"/></div>
+            </div>
+            ${s.isTraining?'<div class="alert alert-warn mb8" style="font-size:11px;">⚠️ 研修中ONです。CSVにデータがない日は研修日給で自動計算されます。</div>':''}
+            <div class="divider"></div>
+            <div class="card-title">駐車場・その他</div>
+            <div class="grid3 mb8">
+              <div class="form-group" style="margin-bottom:0;"><label class="form-label">駐車場立替金（円/月）</label>
+                <input class="form-control" type="number" value="${s.parkingFee||0}" onchange="setSS('${esc(name)}','parkingFee',+this.value)" placeholder="0"/></div>
+              <div class="form-group" style="margin-bottom:0;grid-column:span 2;"><label class="form-label">備考</label>
+                <input class="form-control" value="${esc(s.note||'')}" onchange="setSS('${esc(name)}','note',this.value)" placeholder="メモ・特記事項"/></div>
+            </div>
+            <div class="divider"></div>
+            <div class="card-title">振込先</div>
+            <div class="grid3 mb8">
+              <div class="form-group" style="margin-bottom:0;"><label class="form-label">銀行名</label><input class="form-control" value="${s.bankName||''}" onchange="setSS('${esc(name)}','bankName',this.value)" placeholder="○○銀行"/></div>
+              <div class="form-group" style="margin-bottom:0;"><label class="form-label">支店名</label><input class="form-control" value="${s.bankBranch||''}" onchange="setSS('${esc(name)}','bankBranch',this.value)"/></div>
+              <div class="form-group" style="margin-bottom:0;"><label class="form-label">口座種別</label>
+                <select class="form-control" onchange="setSS('${esc(name)}','bankType',this.value)">
+                  <option ${s.bankType==='普通'||!s.bankType?'selected':''}>普通</option>
+                  <option ${s.bankType==='当座'?'selected':''}>当座</option>
+                </select></div>
+              <div class="form-group" style="margin-bottom:0;"><label class="form-label">口座番号</label><input class="form-control" value="${s.bankNo||''}" onchange="setSS('${esc(name)}','bankNo',this.value)"/></div>
+              <div class="form-group" style="margin-bottom:0;"><label class="form-label">口座名義</label><input class="form-control" value="${s.bankHolder||''}" onchange="setSS('${esc(name)}','bankHolder',this.value)"/></div>
+            </div>
+            <div class="divider"></div>
+            <button class="btn btn-red btn-sm del-staff-btn" data-name="${esc(name)}">🗑 削除</button>
           </div>
-          <div class="grid3 mb8">
-            <div class="form-group" style="margin-bottom:0;"><label class="form-label">最低保証額（円）</label>
-              <input class="form-control" type="number" value="${s.minAmount||10000}" onchange="setSS('${esc(name)}','minAmount',+this.value)"/></div>
-            <div class="form-group" style="margin-bottom:0;"><label class="form-label">時給（円）</label>
-              <input class="form-control" type="number" value="${s.hourlyRate||1400}" onchange="setSS('${esc(name)}','hourlyRate',+this.value)"/></div>
-          </div>
-          <div class="divider"></div>
-          <div class="card-title" style="display:flex;align-items:center;gap:8px;">
-            <span>研修設定</span>
-            <label style="display:flex;align-items:center;gap:4px;font-weight:400;font-size:11px;text-transform:none;letter-spacing:0;">
-              <input type="checkbox" onchange="setSS('${esc(name)}','isTraining',this.checked)" ${s.isTraining?'checked':''}/>
-              研修中フラグをON
-            </label>
-          </div>
-          <div class="grid3 mb8">
-            <div class="form-group" style="margin-bottom:0;"><label class="form-label">研修日給（円/日）</label>
-              <input class="form-control" type="number" value="${s.trainingDayRate||8000}" onchange="setSS('${esc(name)}','trainingDayRate',+this.value)"/></div>
-          </div>
-          ${s.isTraining?'<div class="alert alert-warn" style="font-size:11px;">⚠️ 研修中ONです。研修日フラグが付いた勤務は研修日給で計算されます。</div>':''}
-          <div class="divider"></div>
-          <div class="card-title">振込先</div>
-          <div class="grid3">
-            <div class="form-group" style="margin-bottom:0;"><label class="form-label">銀行名</label><input class="form-control" value="${s.bankName||''}" onchange="setSS('${esc(name)}','bankName',this.value)" placeholder="○○銀行"/></div>
-            <div class="form-group" style="margin-bottom:0;"><label class="form-label">支店名</label><input class="form-control" value="${s.bankBranch||''}" onchange="setSS('${esc(name)}','bankBranch',this.value)"/></div>
-            <div class="form-group" style="margin-bottom:0;"><label class="form-label">口座種別</label>
-              <select class="form-control" onchange="setSS('${esc(name)}','bankType',this.value)">
-                <option ${s.bankType==='普通'||!s.bankType?'selected':''}>普通</option>
-                <option ${s.bankType==='当座'?'selected':''}>当座</option>
-              </select></div>
-            <div class="form-group" style="margin-bottom:0;"><label class="form-label">口座番号</label><input class="form-control" value="${s.bankNo||''}" onchange="setSS('${esc(name)}','bankNo',this.value)"/></div>
-            <div class="form-group" style="margin-bottom:0;"><label class="form-label">口座名義</label><input class="form-control" value="${s.bankHolder||''}" onchange="setSS('${esc(name)}','bankHolder',this.value)"/></div>
-          </div>
-          <div class="divider"></div>
-          <button class="btn btn-red btn-sm del-staff-btn" data-name="${esc(name)}">🗑 削除</button>
         </div>`;
       }).join('')}
-      <button class="btn btn-primary mt8" id="add-staff-btn">＋ スタッフを追加</button>
     </div>`;
+
+  window.toggleStaffCard=function(id){
+    const el2=document.getElementById(id);
+    if(!el2)return;
+    const isHidden=el2.style.display==='none';
+    el2.style.display=isHidden?'block':'none';
+    document.querySelectorAll('.staff-arrow-'+id).forEach(a=>a.textContent=isHidden?'▲ 閉じる':'▶ 詳細');
+  };
 
   el.querySelector('#add-staff-btn').addEventListener('click',()=>{
     document.getElementById('modal-title').textContent='スタッフを追加';
@@ -1114,7 +1165,8 @@ function buildDocHtml(staffName,month,payDate,type,recs){
   const mExtrasForDoc=(salaryDb.monthlyExtras||[]).filter(e=>e.month===month&&e.staffName===staffName);
   const extrasTotal=allExtras.reduce((s,e)=>s+Number(e.amount||0),0);
   const mExtrasForDocTotal=mExtrasForDoc.reduce((s,e)=>s+Number(e.amount||0),0);
-  const grandTotal=totalAmt+extrasTotal+mExtrasForDocTotal;
+  const parkingFee=Number(ss.parkingFee||0);
+  const grandTotal=totalAmt+extrasTotal+mExtrasForDocTotal+parkingFee;
   const detailRows=recs.map(r=>{
     const pay=getEffectivePay(r);
     const tr2=Number(r.transport)||0;
@@ -1122,11 +1174,12 @@ function buildDocHtml(staffName,month,payDate,type,recs){
     const isTrainingDay=r.trainingDay&&ss2.isTraining;
     return `<tr><td>${r.date}</td><td>${r.location||''}</td><td style="text-align:right;">${r.workHours||'-'}</td><td style="text-align:right;">${formatMoney(r.salesAmount)}</td><td style="text-align:right;">${formatMoney(pay)}${isTrainingDay?'<span style="font-size:9px;color:#6B2FA0;"> (研修)</span>':''}</td><td style="text-align:right;">${formatMoney(tr2)}</td></tr>`;
   }).join('');
+  const parkingRows=parkingFee?`<tr><td>${month}</td><td colspan="3">駐車場立替金${ss.note?' ('+ss.note+')':''}</td><td style="text-align:right;">${formatMoney(parkingFee)}</td><td></td></tr>`:'';
   const extrasRows=[...allExtras,...mExtrasForDoc].map(e=>`<tr><td>${e.date||'-'}</td><td colspan="3">${esc(e.memo||'手当')}</td><td style="text-align:right;">${formatMoney(e.amount)}</td><td></td></tr>`).join('');
   const detailTable=`<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:8px;">
     <thead><tr style="background:#f5f5f5;">${['日付','場所','時間','売上',type==='invoice'?'報酬':'給与','交通費'].map(h=>`<th style="padding:5px 7px;border:1px solid #ddd;text-align:left;">${h}</th>`).join('')}</tr></thead>
-    <tbody>${detailRows}${extrasRows}</tbody>
-    <tfoot><tr style="font-weight:700;"><td colspan="4" style="padding:5px 7px;border:1px solid #ddd;">合計（${recs.length}日）</td><td style="padding:5px 7px;border:1px solid #ddd;text-align:right;">${formatMoney(totalPay+extrasTotal+mExtrasForDocTotal)}</td><td style="padding:5px 7px;border:1px solid #ddd;text-align:right;">${formatMoney(totalTr)}</td></tr></tfoot>
+    <tbody>${detailRows}${extrasRows}${parkingRows}</tbody>
+    <tfoot><tr style="font-weight:700;"><td colspan="4" style="padding:5px 7px;border:1px solid #ddd;">合計（${recs.length}日）</td><td style="padding:5px 7px;border:1px solid #ddd;text-align:right;">${formatMoney(totalPay+extrasTotal+mExtrasForDocTotal+parkingFee)}</td><td style="padding:5px 7px;border:1px solid #ddd;text-align:right;">${formatMoney(totalTr)}</td></tr></tfoot>
   </table>`;
   if(type==='invoice'){
     return `<div style="max-width:780px;margin:0 auto;padding:24px;background:white;border:1px solid #ddd;font-family:'Noto Sans JP',sans-serif;">
