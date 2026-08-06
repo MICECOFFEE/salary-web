@@ -659,7 +659,7 @@ function renderSalaryTable(month){
 
 
   // スタッフ別グループ
-  const staffGroups=[...new Set(recs.map(r=>r.staffName))].map(name=>{
+  const staffGroups=[...new Set(recs.map(r=>r.staffName))].map((name,gIdx)=>{
     const sr=recs.filter(r=>r.staffName===name);
     const pay=sr.reduce((s,r)=>s+getTotalPay(r),0);
     const tr2=sr.reduce((s,r)=>s+(Number(r.transport)||0),0);
@@ -699,7 +699,7 @@ function renderSalaryTable(month){
         const ss2=getStaffSetting(g.name);
         const typeCls=ss2.isTraining?'badge-training':'badge-green';
         const typeLabel=ss2.isTraining?'研修中':ss2.type||'歩合';
-        const safeId='detail_'+g.name.replace(/[^a-zA-Z0-9]/g,'_');
+        const safeId='detail_'+gIdx;
         return `<tr class="staff-sum-row" data-detail="${safeId}" style="cursor:pointer;background:var(--surface2);">
           <td><strong>${esc(g.name)}</strong> <span class="arrow-icon">▶</span></td>
           <td><span class="badge ${typeCls}">${typeLabel}</span></td>
@@ -936,9 +936,9 @@ pages.staff=function(el){
     <div class="card">
       <div class="card-title">スタッフ設定</div>
       <button class="btn btn-primary mb12" id="add-staff-btn">＋ スタッフを追加</button>
-      ${names.map(name=>{
+      ${names.map((name,sIdx)=>{
         const s=getStaffSetting(name);
-        const safeId='staff_'+name.replace(/[^a-zA-Z0-9]/g,'_');
+        const safeId='staff_'+sIdx;
         return `<div class="card" style="margin-bottom:8px;padding:12px 16px;">
           <div class="flex items-c" style="cursor:pointer;" onclick="toggleStaffCard('${safeId}')">
             <div style="flex:1;">
@@ -947,7 +947,7 @@ pages.staff=function(el){
               <span class="badge ${s.isTraining?'badge-training':'badge-green'}" style="margin-left:4px;">${s.isTraining?'研修中':s.type||'歩合'}</span>
               ${s.parkingFee?`<span class="badge badge-gray" style="margin-left:4px;">駐車場 ${formatMoney(s.parkingFee)}</span>`:''}
             </div>
-            <span class="staff-arrow-${safeId}" style="color:var(--text3);font-size:12px;">▶ 詳細</span>
+            <span class="staff-arrow" data-target="${safeId}" style="color:var(--text3);font-size:12px;">▶ 詳細</span>
           </div>
           <div id="${safeId}" style="display:none;margin-top:12px;">
             <div class="form-group mb8"><label class="form-label">スタッフ名</label>
@@ -1023,7 +1023,7 @@ pages.staff=function(el){
     if(!el2)return;
     const isHidden=el2.style.display==='none';
     el2.style.display=isHidden?'block':'none';
-    document.querySelectorAll('.staff-arrow-'+id).forEach(a=>a.textContent=isHidden?'▲ 閉じる':'▶ 詳細');
+    document.querySelectorAll('.staff-arrow[data-target="'+id+'"]').forEach(a=>a.textContent=isHidden?'▲ 閉じる':'▶ 詳細');
   };
 
   el.querySelector('#add-staff-btn').addEventListener('click',()=>{
