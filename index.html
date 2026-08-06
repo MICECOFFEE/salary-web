@@ -515,6 +515,7 @@ pages.salary=function(el){
       <div class="flex gap8 items-c mb12">
         <select class="form-control" style="width:160px;" id="sal-month-sel"></select>
         <button class="btn btn-outline btn-sm" id="add-rec-btn">＋ 手動追加</button>
+        <button class="btn btn-outline btn-sm" id="add-training-btn">📚 研修日を追加</button>
         <button class="btn btn-outline btn-sm" id="add-extra-only-btn">＋ 手当のみ追加</button>
         <button class="btn btn-red btn-sm ml-a" id="clear-month-btn">🗑 この月削除</button>
       </div>
@@ -532,6 +533,7 @@ pages.salary=function(el){
 
   salMonSel.addEventListener('change',()=>renderSalaryTable(salMonSel.value));
   el.querySelector('#add-rec-btn').addEventListener('click',()=>addRecord(salMonSel.value||''));
+  el.querySelector('#add-training-btn').addEventListener('click',()=>addTrainingDays(salMonSel.value||''));
   el.querySelector('#add-extra-only-btn').addEventListener('click',()=>addExtraOnly(salMonSel.value||''));
   el.querySelector('#clear-month-btn').addEventListener('click',()=>{
     const m=salMonSel.value;
@@ -867,6 +869,83 @@ function editRecord(id){
       trainingDay:document.getElementById('e8').checked
     };
     closeModal();saveSalaryData();renderSalaryTable(salaryDb.records[idx].month);
+  });
+}
+
+function addTrainingDays(month){
+  // 研修中スタッフのみ表示
+  const trainingStaff=Object.entries(salaryDb.staffSettings)
+    .filter(([,s])=>s.isTraining).map(([name])=>name);
+  if(!trainingStaff.length){
+    alert('研修中スタッフがいません。スタッフ設定で「研修中フラグをON」にしてください。');return;
+  }
+
+  // 月の日数を計算
+  const [y,m]=month.split('-').map(Number);
+  const daysInMonth=new Date(y,m,0).getDate();
+  const allDates=Array.from({length:daysInMonth},(_,i)=>{
+    const d=String(i+1).padStart(2,'0');
+    return month+'-'+d;
+  });
+
+  document.getElementById('modal-title').textContent='研修日を追加';
+  document.getElementById('modal-body').innerHTML=`
+    <div class="alert alert-info mb12" style="font-size:11px;">研修日給（スタッフ設定の日給）で自動計算されます。既存データと重複する日は追加されません。</div>
+    <div class="form-group"><label class="form-label">スタッフ</label>
+      <select class="form-control" id="tr-staff">
+        ${trainingStaff.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-group"><label class="form-label">場所</label>
+      <input class="form-control" id="tr-location" placeholder="研修場所"/>
+    </div>
+    <div class="form-group"><label class="form-label">日付を選択</label>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;" id="tr-dates">
+        ${allDates.map(d=>`<label style="display:flex;align-items:center;gap:3px;font-size:11px;padding:3px 7px;border:1px solid var(--border);border-radius:6px;cursor:pointer;">
+          <input type="checkbox" name="tr-date-cb" value="${d}"/> ${d.slice(8)}日
+        </label>`).join('')}
+      </div>
+      <div class="btn-group mt8">
+        <button class="btn btn-outline btn-sm" onclick="document.querySelectorAll('input[name=tr-date-cb]').forEach(c=>c.checked=true)">全選択</button>
+        <button class="btn btn-outline btn-sm" onclick="document.querySelectorAll('input[name=tr-date-cb]').forEach(c=>c.checked=false)">全解除</button>
+      </div>
+    </div>
+    <div class="form-group"><label class="form-label">交通費（円/日）</label>
+      <input class="form-control" type="number" id="tr-transport" value="0"/>
+    </div>`;
+
+  document.getElementById('modal-footer').innerHTML=
+    '<button class="btn btn-primary" id="save-tr-btn">追加</button><button class="btn btn-outline" onclick="closeModal()">キャンセル</button>';
+  document.getElementById('modal').style.display='flex';
+
+  document.getElementById('save-tr-btn').addEventListener('click',()=>{
+    const staffName=document.getElementById('tr-staff').value;
+    const location=document.getElementById('tr-location').value;
+    const transport=Number(document.getElementById('tr-transport').value)||0;
+    const checked=[...document.querySelectorAll('input[name=tr-date-cb]:checked')].map(c=>c.value);
+    if(!checked.length){alert('日付を選択してください');return;}
+
+    // 既存データと重複しない日のみ追加
+    const existingDates=salaryDb.records
+      .filter(r=>r.staffName===staffName&&r.month===month)
+      .map(r=>r.date);
+    const newDates=checked.filter(d=>!existingDates.includes(d));
+    const skipped=checked.length-newDates.length;
+
+    newDates.forEach(date=>{
+      salaryDb.records.push({
+        id:salaryDb.nextId++,
+        month,staffName,date,
+        location,salesAmount:0,workHours:'',
+        transport,route:'',memo:'研修',
+        trainingDay:true,manualPay:undefined,extras:[]
+      });
+    });
+
+    closeModal();saveSalaryData();
+    if(skipped>0)showToast(newDates.length+'件追加（'+skipped+'件は既存データと重複のためスキップ）');
+    else showToast(newDates.length+'件の研修日を追加しました');
+    renderSalaryTable(month);
   });
 }
 
