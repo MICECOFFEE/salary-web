@@ -1342,7 +1342,7 @@ function buildDocHtml(staffName,month,payDate,type,recs){
   const ss=getStaffSetting(staffName);
   const c=salaryDb.company||{};
   const monthStr=formatMonth(month);
-  const totalPay=recs.reduce((s,r)=>s+getTotalPay(r),0);
+  const totalPay=recs.reduce((s,r)=>s+getEffectivePay(r),0);
   const totalTr=recs.reduce((s,r)=>s+(Number(r.transport)||0),0);
   const totalAmt=totalPay+totalTr;
   // 手当・立替の集計（日付あり＋日付なし）
@@ -1486,7 +1486,7 @@ pages.records=function(el){
     if(lf)recs=recs.filter(r=>(r.location||'').includes(lf));
     recs.sort((a,b)=>a.date<b.date?1:-1);
 
-    const totalPay=recs.reduce((s,r)=>s+getTotalPay(r),0);
+    const totalPay=recs.reduce((s,r)=>s+getEffectivePay(r),0);
     const totalTr=recs.reduce((s,r)=>s+(Number(r.transport)||0),0);
     const totalSales=recs.reduce((s,r)=>s+(Number(r.salesAmount)||0),0);
 
