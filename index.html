@@ -453,7 +453,7 @@ pages.dashboard=function(el){
   const m=months[0]||'';
   const recs=salaryDb.records.filter(r=>r.month===m);
   const staffList=[...new Set(recs.map(r=>r.staffName))];
-  const totalPay=recs.reduce((s,r)=>s+getTotalPay(r),0);
+  const totalPay=recs.reduce((s,r)=>s+getEffectivePay(r),0);
   const totalTr=recs.reduce((s,r)=>s+(Number(r.transport)||0),0);
 
   el.innerHTML=`
@@ -712,7 +712,7 @@ function renderSalaryTable(month){
   const recs=salaryDb.records.filter(r=>r.month===month);
   if(!recs.length){tbl.innerHTML='<p class="muted" style="padding:20px;text-align:center;">データがありません</p>';return;}
 
-  const totalPay=recs.reduce((s,r)=>s+getTotalPay(r),0);
+  const totalPay=recs.reduce((s,r)=>s+getEffectivePay(r),0);
   const totalTr=recs.reduce((s,r)=>s+(Number(r.transport)||0),0);
   const mExtras=(salaryDb.monthlyExtras||[]).filter(e=>e.month===month);
   const mExtrasTotal=mExtras.reduce((s,e)=>s+Number(e.amount||0),0);
