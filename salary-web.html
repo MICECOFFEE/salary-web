@@ -158,7 +158,7 @@ tfoot td{background:var(--surface2) !important;font-weight:700;}
   <div class="sidebar">
     <div class="logo">
       <h1>💰 給与計算<br>管理システム</h1>
-      <p>100g COFFEE</p>
+      <p>100g COFFEE <span style="font-size:9px;opacity:.5;">v1.8</span></p>
     </div>
     <nav class="nav" id="sidebar-nav">
       <div class="nav-item active" data-page="dashboard"><span class="nav-icon">📊</span>ダッシュボード</div>
@@ -656,21 +656,23 @@ function resolveCsvName(csvName){
 }
 
 function csvRowToRecord(r,month){
-  // 列: スタッフ,日付,販売場所,売上高,勤務時間,日給,交通費,合計,通勤経路,歩合率,最低保証額,時給,アラート
+  // 列(14列版): スタッフ,日付,販売場所,売上高(レジ),売上高(販売報告),勤務時間,日給,交通費,合計,通勤経路,歩合率,最低保証額,時給,アラート
+  // 列(13列版): スタッフ,日付,販売場所,売上高,勤務時間,日給,交通費,合計,通勤経路,歩合率,最低保証額,時給,アラート
   const isoDate=toISO((r[1]||'').trim());
+  // 14列か13列かを自動判定（r[4]が売上高数値なら14列）
+  const is14col=r.length>=14&&!isNaN(Number((r[4]||'').replace(/,/g,'')))&&(r[4]||'').trim()!==''&&(r[4]||'').trim()!=='-';
+  const salesAmount=Number((r[3]||'0').replace(/,/g,''));
+  const workHours=is14col?(r[5]||'').trim():(r[4]||'').trim();
+  const transport=is14col?Number((r[7]||'0').replace(/,/g,'')):Number((r[6]||'0').replace(/,/g,''));
+  const route=is14col?(r[9]||'').trim():(r[8]||'').trim();
   return{
     id:salaryDb.nextId++,
     month:isoDate.slice(0,7)||month,
     staffName:resolveCsvName((r[0]||'').trim()),
     date:isoDate,
     location:(r[2]||'').trim(),
-    salesAmount:Number((r[3]||'0').replace(/,/g,'')),
-    workHours:(r[4]||'').trim(),
-    transport:Number((r[6]||'0').replace(/,/g,'')),
-    route:(r[8]||'').trim(),
-    memo:'',
-    trainingDay:false,
-    manualPay:undefined
+    salesAmount,workHours,transport,route,
+    memo:'',trainingDay:false,manualPay:undefined
   };
 }
 
