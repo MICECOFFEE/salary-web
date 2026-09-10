@@ -721,12 +721,13 @@ function renderSalaryTable(month){
   // スタッフ別グループ
   const staffGroups=[...new Set(recs.map(r=>r.staffName))].map((name,gIdx)=>{
     const sr=recs.filter(r=>r.staffName===name);
-    const pay=sr.reduce((s,r)=>s+getTotalPay(r),0);
+    const pay=sr.reduce((s,r)=>s+getEffectivePay(r),0);
+    const extras=sr.reduce((s,r)=>s+getExtrasTotal(r),0);
     const tr2=sr.reduce((s,r)=>s+(Number(r.transport)||0),0);
     const me=(salaryDb.monthlyExtras||[]).filter(e=>e.month===month&&e.staffName===name);
     const meTotal=me.reduce((s,e)=>s+Number(e.amount||0),0);
     const sales=sr.reduce((s,r)=>s+(Number(r.salesAmount)||0),0);
-    return{name,sr,pay,tr:tr2,meTotal,total:pay+tr2+meTotal,sales};
+    return{name,sr,pay,extras,tr:tr2,meTotal,total:pay+extras+tr2+meTotal,sales};
   });
 
   const buildDetailRows=(g)=>{
@@ -767,7 +768,7 @@ function renderSalaryTable(month){
           <td class="tr">${formatMoney(g.sales)}</td>
           <td class="tr bold">${formatMoney(g.pay)}</td>
           <td class="tr">${formatMoney(g.tr)}</td>
-          <td class="tr">${g.meTotal?formatMoney(g.meTotal):'-'}</td>
+          <td class="tr">${(g.meTotal+g.extras)?formatMoney(g.meTotal+g.extras):'-'}</td>
           <td class="tr bold">${formatMoney(g.total)}</td>
           <td><button class="btn btn-outline btn-sm doc-jump-btn" data-name="${esc(g.name)}" data-month="${month}">明細</button></td>
         </tr>
@@ -779,7 +780,7 @@ function renderSalaryTable(month){
         </td></tr>`;
       }).join('')}
       </tbody>
-      <tfoot><tr><td colspan="7" class="bold">月合計</td><td class="tr bold">${formatMoney(recs.reduce((s,r)=>s+getTotalPay(r)+(Number(r.transport)||0),0)+mExtrasTotal)}</td><td></td></tr></tfoot>
+      <tfoot><tr><td colspan="7" class="bold">月合計</td><td class="tr bold">${formatMoney(staffGroups.reduce((s,g)=>s+g.total,0))}</td><td></td></tr></tfoot>
     </table></div>
     ${mExtras.length?`
     <div class="mt12">
@@ -796,7 +797,7 @@ function renderSalaryTable(month){
         <tfoot><tr><td colspan="3" class="bold">小計</td><td class="tr bold">${formatMoney(mExtrasTotal)}</td><td></td></tr></tfoot>
       </table></div>
     </div>`:''}
-    <div class="mt12 bold" style="text-align:right;font-size:14px;">月合計: ${formatMoney(recs.reduce((s,r)=>s+getTotalPay(r)+(Number(r.transport)||0),0)+mExtrasTotal)}</div>
+    <div class="mt12 bold" style="text-align:right;font-size:14px;">月合計: ${formatMoney(staffGroups.reduce((s,g)=>s+g.total,0))}</div>
     `;
 
   // 折りたたみ
