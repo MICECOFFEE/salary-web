@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>収支分析 試算</title>
+<style>
+:root{--bg:#f6f4f1;--surface:#fff;--surface2:#f1ede8;--border:#e2dcd4;--text:#2b2621;--text2:#6b625a;--text3:#9a9087;--accent:#7a4a24;--red:#c0392b;--green:#2e7d4f;}
+*{box-sizing:border-box;}
+body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP","Yu Gothic",sans-serif;font-size:13px;}
+.wrap{max-width:1200px;margin:0 auto;padding:20px 16px 60px;}
+h1{font-size:20px;margin:0 0 4px;}
+.sub{color:var(--text2);margin-bottom:16px;}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px;}
+.card-title{font-weight:700;font-size:14px;margin-bottom:10px;}
+.btn{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--border);background:#fff;color:var(--text);border-radius:8px;padding:9px 14px;font-size:13px;cursor:pointer;}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:#fff;}
+.btn-sm{padding:5px 10px;font-size:12px;}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;}
+label{font-size:11px;color:var(--text2);display:block;margin-bottom:3px;}
+input[type=number],select{border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:13px;background:#fff;}
+input[type=number]{width:90px;}
+.err{background:#fdecea;color:var(--red);border-radius:8px;padding:10px;margin-bottom:12px;display:none;white-space:pre-wrap;}
+.info{background:#eef5ff;color:#244a7a;border-radius:8px;padding:10px;margin-bottom:12px;line-height:1.6;}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;}
+.kpi{background:var(--surface2);border-radius:8px;padding:12px;}
+.kpi .l{font-size:11px;color:var(--text2);}
+.kpi .v{font-size:20px;font-weight:700;margin-top:4px;}
+.kpi .s{font-size:11px;color:var(--text3);margin-top:2px;}
+.tbl-wrap{overflow-x:auto;}
+table{border-collapse:collapse;width:100%;min-width:640px;}
+th,td{padding:7px 9px;border-bottom:1px solid var(--border);text-align:left;white-space:nowrap;}
+th{background:var(--surface2);font-size:11px;color:var(--text2);font-weight:600;}
+.tr{text-align:right;}
+.red{color:var(--red);}
+.green{color:var(--green);}
+.muted{color:var(--text3);}
+tr.total td{background:#faf6f1;font-weight:700;}
+details{margin-top:6px;}
+summary{cursor:pointer;color:var(--accent);font-size:12px;}
+pre{background:var(--surface2);border-radius:8px;padding:10px;max-height:360px;overflow:auto;font-size:11px;}
+.tag{display:inline-block;background:var(--surface2);border-radius:4px;padding:2px 6px;margin:2px;font-size:11px;}
+#app{display:none;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>収支分析 試算</h1>
+  <div class="sub">データ: profit_users/{uid}/data/main ／ 月別サマリー・1日平均・損益分岐点</div>
+
+  <div class="err" id="err"></div>
+
+  <div class="card" id="login-card">
+    <div class="card-title">ログイン</div>
+    <p class="muted" style="margin-top:0">収支分析アプリと同じGoogleアカウントでログインしてください。</p>
+    <button class="btn btn-primary" id="login-btn">Googleでログイン</button>
+  </div>
+
+  <div id="app">
+    <div class="row" style="justify-content:space-between;margin-bottom:12px">
+      <div class="muted" id="user-label"></div>
+      <div class="row">
+        <button class="btn btn-sm" id="reload-btn">再読み込み</button>
+        <button class="btn btn-sm" id="logout-btn">ログアウト</button>
+      </div>
+    </div>
+
+    <!-- データ構造 -->
+    <div class="card">
+      <div class="card-title">① 取得データの構造</div>
+      <div class="info">取得した生データはブラウザのコンソール（F12 → Console）にも出力しています。
+        下の「配列の役割」と「科目の分類」は自動推定です。違っていれば選び直してください（この端末に保存されます）。</div>
+      <div id="structure"></div>
+      <details><summary>生データ(JSON)を表示</summary><pre id="raw"></pre></details>
+    </div>
+
+    <!-- 月別サマリー -->
+    <div class="card">
+      <div class="card-title">② 月別サマリー</div>
+      <div class="tbl-wrap"><table id="summary-tbl"></table></div>
+    </div>
+
+    <!-- 1日平均 -->
+    <div class="card">
+      <div class="card-title">③ 1日あたりの平均値（月別）</div>
+      <div class="info">営業日数は売上データの日付（日にち）の種類数から自動計算します。日付が月単位しかない場合は空欄になるので、手入力してください（この端末に保存されます）。</div>
+      <div class="tbl-wrap"><table id="daily-tbl"></table></div>
+    </div>
+
+    <!-- 損益分岐点 -->
+    <div class="card">
+      <div class="card-title">④ 損益分岐点の試算</div>
+      <div class="row" style="margin-bottom:12px">
+        <div><label>基準とする期間</label>
+          <select id="bep-basis">
+            <option value="last">直近月</option>
+            <option value="avg3" selected>直近3ヶ月平均</option>
+            <option value="avg6">直近6ヶ月平均</option>
+            <option value="all">全期間平均</option>
+          </select></div>
+        <div><label>人件費の扱い</label>
+          <select id="bep-labor">
+            <option value="fixed" selected>固定費として扱う</option>
+            <option value="variable">変動費として扱う（歩合給の場合）</option>
+          </select></div>
+      </div>
+      <div class="kpis" id="bep-kpis"></div>
+      <div class="muted" id="bep-note" style="margin-top:10px;line-height:1.6"></div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import{initializeApp}from'https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js';
+import{getAuth,signOut,onAuthStateChanged,GoogleAuthProvider,signInWithPopup}from'https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js';
+import{getFirestore,doc,getDoc}from'https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js';
+
+const FB={apiKey:"AIzaSyCNxDr8wqq-dIfI7ns9mZ6GySQkP0qAN1I",authDomain:"shift-app-920a1.firebaseapp.com",projectId:"shift-app-920a1",storageBucket:"shift-app-920a1.firebasestorage.app",messagingSenderId:"393055910720",appId:"1:393055910720:web:97b30c30b3f3b85ba758a5"};
+const app=initializeApp(FB);
+const auth=getAuth(app);
+const db=getFirestore(app);
+
+const $=id=>document.getElementById(id);
+let raw=null;
+
+/* ---------- 端末保存の設定 ---------- */
+const LS_KEY='profit_simulation_settings_v1';
+function loadSettings(){try{return JSON.parse(localStorage.getItem(LS_KEY))||{};}catch(e){return {};}}
+function saveSettings(){try{localStorage.setItem(LS_KEY,JSON.stringify(settings));}catch(e){}}
+let settings=Object.assign({arrayRoles:{},catClass:{},days:{}},loadSettings());
+
+/* ---------- 認証 ---------- */
+function showErr(msg){const e=$('err');e.textContent=msg;e.style.display=msg?'block':'none';}
+$('login-btn').addEventListener('click',async()=>{
+  showErr('');
+  try{await signInWithPopup(auth,new GoogleAuthProvider());}
+  catch(e){showErr('Googleログイン失敗: '+e.message);}
+});
+$('logout-btn').addEventListener('click',()=>signOut(auth));
+$('reload-btn').addEventListener('click',()=>auth.currentUser&&loadData(auth.currentUser.uid));
+onAuthStateChanged(auth,u=>{
+  $('login-card').style.display=u?'none':'block';
+  $('app').style.display=u?'block':'none';
+  if(u){$('user-label').textContent=u.email+'（uid: '+u.uid+'）';loadData(u.uid);}
+});
+
+/* ---------- 取得 ---------- */
+async function loadData(uid){
+  showErr('');
+  try{
+    const snap=await getDoc(doc(db,`profit_users/${uid}/data/main`));
+    if(!snap.exists()){showErr('profit_users/'+uid+'/data/main にデータがありません。収支分析アプリと同じアカウントか確認してください。');return;}
+    raw=snap.data();
+    logStructure(raw);
+    render();
+  }catch(e){console.error(e);showErr('データ取得失敗: '+e.message);}
+}
+
+// コンソールへ構造を出力（フィールド名確認用）
+function logStructure(d){
+  console.group('%c[profit_users/main] 取得データ','color:#7a4a24;font-weight:bold');
+  console.log('生データ:',d);
+  console.log('トップレベルのキー:',Object.keys(d));
+  for(const [k,v] of Object.entries(d)){
+    if(Array.isArray(v)){
+      const fields=new Set();v.forEach(x=>x&&typeof x==='object'&&Object.keys(x).forEach(f=>fields.add(f)));
+      console.log(`配列 ${k}: ${v.length}件 / フィールド:`,[...fields]);
+      console.table(v.slice(0,10));
+      const cats=fieldOf(v,CAT_KEYS);
+      if(cats){const c={};v.forEach(x=>{const n=String(x[cats]??'(なし)');c[n]=(c[n]||0)+1;});console.log(`  ${k} の ${cats} 別件数:`,c);}
+    }else if(v&&typeof v==='object'){
+      console.log(`オブジェクト ${k}: キー`,Object.keys(v).slice(0,30));
+    }else{
+      console.log(`値 ${k}:`,v);
+    }
+  }
+  console.groupEnd();
+}
+
+/* ---------- フィールド名のゆらぎ吸収 ---------- */
+const AMOUNT_KEYS=['amount','value','price','total','sum','money','金額','売上','sales'];
+const CAT_KEYS=['category','cat','type','kind','account','item','科目','区分','分類'];
+const MONTH_KEYS=['month','ym','yearMonth','period','月'];
+const DATE_KEYS=['date','day','dt','日付'];
+const COST_KEYS=['cost','cogs','costAmount','原価'];
+function fieldOf(arr,keys){
+  const sample=arr.filter(x=>x&&typeof x==='object').slice(0,50);
+  for(const k of keys)if(sample.some(x=>x[k]!==undefined&&x[k]!==null&&x[k]!==''))return k;
+  return null;
+}
+function num(v){if(typeof v==='number')return v;const n=Number(String(v??'').replace(/[,¥円\s]/g,''));return isNaN(n)?0:n;}
+function normMonth(s){
+  if(!s)return '';
+  const m=String(s).match(/(\d{4})[\/\-年.]?(\d{1,2})/);
+  return m?m[1]+'-'+m[2].padStart(2,'0'):'';
+}
+function normDate(s){
+  if(!s)return '';
+  if(s.toDate)s=s.toDate().toISOString(); // Firestore Timestamp
+  const m=String(s).match(/(\d{4})[\/\-年.](\d{1,2})[\/\-月.](\d{1,2})/);
+  return m?m[1]+'-'+m[2].padStart(2,'0')+'-'+m[3].padStart(2,'0'):'';
+}
+
+/* ---------- 配列の役割・科目分類の推定 ---------- */
+function guessRole(key){
+  if(/revenue|sale|income|売上|収入/i.test(key))return 'revenue';
+  if(/expense|cost|payment|経費|費用|支出/i.test(key))return 'expense';
+  return 'ignore';
+}
+function guessClass(cat){
+  const c=String(cat);
+  if(/原価|仕入|材料|食材|豆|包材|cogs/i.test(c))return 'cogs';
+  if(/人件|給与|給料|賞与|報酬|外注|委託|法定福利|アルバイト|バイト/.test(c))return 'labor';
+  if(/賃料|家賃|地代|テナント|出店料|場所代|rent/i.test(c))return 'rent';
+  return 'other';
+}
+const CLASS_LABEL={cogs:'原価（変動費）',labor:'人件費',rent:'賃料',other:'その他費用',ignore:'集計しない'};
+
+function getArrays(d){
+  return Object.entries(d).filter(([k,v])=>Array.isArray(v)&&v.some(x=>x&&typeof x==='object'));
+}
+function roleOf(key){return settings.arrayRoles[key]||guessRole(key);}
+function classOf(cat){return settings.catClass[cat]||guessClass(cat);}
+
+/* ---------- 集計 ---------- */
+function aggregate(){
+  const months={};
+  const M=m=>months[m]||(months[m]={sales:0,cogs:0,labor:0,rent:0,other:0,dates:new Set()});
+  for(const [key,arr] of getArrays(raw)){
+    const role=roleOf(key);if(role==='ignore')continue;
+    const fA=fieldOf(arr,AMOUNT_KEYS),fC=fieldOf(arr,CAT_KEYS),fM=fieldOf(arr,MONTH_KEYS),fD=fieldOf(arr,DATE_KEYS),fCost=fieldOf(arr,COST_KEYS);
+    for(const x of arr){
+      if(!x||typeof x!=='object')continue;
+      const date=fD?normDate(x[fD]):'';
+      const month=(fM&&normMonth(x[fM]))||normMonth(date);
+      if(!month)continue;
+      const amt=fA?num(x[fA]):0;
+      const r=M(month);
+      if(role==='revenue'){
+        r.sales+=amt;
+        if(fCost)r.cogs+=num(x[fCost]);  // 売上側に原価が入っている形式
+        if(date)r.dates.add(date);
+      }else{
+        const cls=classOf(fC?String(x[fC]??'(なし)'):'(なし)');
+        if(cls!=='ignore')r[cls]+=amt;
+      }
+    }
+  }
+  return Object.keys(months).sort().map(m=>{
+    const r=months[m];
+    const gross=r.sales-r.cogs;
+    const op=gross-r.labor-r.rent-r.other;
+    // 日付が「毎月1日」だけなら月単位データとみなし自動営業日数は使わない
+    const ds=[...r.dates];
+    const autoDays=ds.length>1?ds.length:null;
+    const days=num(settings.days[m])||autoDays||null;
+    return {month:m,...r,gross,op,rate:r.sales?op/r.sales:null,autoDays,days};
+  });
+}
+
+/* ---------- 表示 ---------- */
+const yen=n=>(n<0?'-':'')+'¥'+Math.round(Math.abs(n)).toLocaleString();
+const pct=n=>n==null||!isFinite(n)?'-':(n*100).toFixed(1)+'%';
+const cls=n=>n<0?'red':'';
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmtMonth=m=>m.replace(/^(\d{4})-(\d{2})$/,'$1年$2月');
+
+function render(){
+  $('raw').textContent=JSON.stringify(raw,null,2);
+  renderStructure();
+  const rows=aggregate();
+  renderSummary(rows);
+  renderDaily(rows);
+  renderBep(rows);
+}
+
+function renderStructure(){
+  const arrays=getArrays(raw);
+  let h='<div style="margin-bottom:8px">トップレベルのキー: '+Object.keys(raw).map(k=>{
+    const v=raw[k];const t=Array.isArray(v)?`配列 ${v.length}件`:typeof v;
+    return `<span class="tag">${esc(k)}（${t}）</span>`;}).join('')+'</div>';
+  if(!arrays.length){
+    h+='<div class="red">オブジェクトの配列が見つかりませんでした。生データ(JSON)の形を確認してください。</div>';
+    $('structure').innerHTML=h;return;
+  }
+  h+='<div class="tbl-wrap"><table><tr><th>配列</th><th>件数</th><th>役割</th><th>検出したフィールド</th><th>全フィールド</th></tr>';
+  for(const [k,arr] of arrays){
+    const fields=new Set();arr.forEach(x=>x&&typeof x==='object'&&Object.keys(x).forEach(f=>fields.add(f)));
+    const det=[['金額',AMOUNT_KEYS],['科目',CAT_KEYS],['月',MONTH_KEYS],['日付',DATE_KEYS],['原価',COST_KEYS]]
+      .map(([l,ks])=>{const f=fieldOf(arr,ks);return f?`${l}=<b>${esc(f)}</b>`:'';}).filter(Boolean).join(' / ');
+    const role=roleOf(k);
+    h+=`<tr><td>${esc(k)}</td><td class="tr">${arr.length}</td><td><select data-arr="${esc(k)}">
+      <option value="revenue"${role==='revenue'?' selected':''}>売上</option>
+      <option value="expense"${role==='expense'?' selected':''}>費用</option>
+      <option value="ignore"${role==='ignore'?' selected':''}>使わない</option></select></td>
+      <td>${det||'<span class="red">金額・日付が見つかりません</span>'}</td><td class="muted">${[...fields].map(esc).join(', ')}</td></tr>`;
+  }
+  h+='</table></div>';
+
+  // 費用の科目分類
+  const cats={};
+  for(const [k,arr] of arrays){
+    if(roleOf(k)!=='expense')continue;
+    const fC=fieldOf(arr,CAT_KEYS),fA=fieldOf(arr,AMOUNT_KEYS);
+    arr.forEach(x=>{if(!x||typeof x!=='object')return;const c=fC?String(x[fC]??'(なし)'):'(なし)';
+      cats[c]=cats[c]||{n:0,sum:0};cats[c].n++;cats[c].sum+=fA?num(x[fA]):0;});
+  }
+  const names=Object.keys(cats).sort((a,b)=>cats[b].sum-cats[a].sum);
+  if(names.length){
+    h+='<div class="card-title" style="margin-top:14px">費用科目の分類</div><div class="tbl-wrap"><table><tr><th>科目</th><th class="tr">件数</th><th class="tr">合計</th><th>分類</th></tr>';
+    for(const c of names){
+      const cur=classOf(c);
+      h+=`<tr><td>${esc(c)}</td><td class="tr">${cats[c].n}</td><td class="tr">${yen(cats[c].sum)}</td><td><select data-cat="${esc(c)}">`+
+        Object.entries(CLASS_LABEL).map(([v,l])=>`<option value="${v}"${cur===v?' selected':''}>${l}</option>`).join('')+'</select></td></tr>';
+    }
+    h+='</table></div>';
+  }
+  $('structure').innerHTML=h;
+  $('structure').querySelectorAll('select[data-arr]').forEach(s=>s.addEventListener('change',()=>{settings.arrayRoles[s.dataset.arr]=s.value;saveSettings();render();}));
+  $('structure').querySelectorAll('select[data-cat]').forEach(s=>s.addEventListener('change',()=>{settings.catClass[s.dataset.cat]=s.value;saveSettings();render();}));
+}
+
+function renderSummary(rows){
+  const t=$('summary-tbl');
+  if(!rows.length){t.innerHTML='<tr><td class="muted">集計できるデータがありません。①で配列の役割を確認してください。</td></tr>';return;}
+  const tot=rows.reduce((a,r)=>{['sales','cogs','gross','labor','rent','other','op'].forEach(k=>a[k]+=r[k]);return a;},{sales:0,cogs:0,gross:0,labor:0,rent:0,other:0,op:0});
+  const tr=(r,label,extra='')=>`<tr${extra}><td>${label}</td><td class="tr">${yen(r.sales)}</td><td class="tr">${yen(r.cogs)}</td>
+    <td class="tr ${cls(r.gross)}">${yen(r.gross)}</td><td class="tr">${yen(r.labor)}</td><td class="tr">${yen(r.rent)}</td>
+    <td class="tr">${yen(r.other)}</td><td class="tr ${cls(r.op)}">${yen(r.op)}</td><td class="tr ${cls(r.op)}">${pct(r.sales?r.op/r.sales:null)}</td></tr>`;
+  t.innerHTML='<tr><th>月</th><th class="tr">売上合計</th><th class="tr">原価合計</th><th class="tr">粗利</th><th class="tr">人件費</th><th class="tr">賃料</th><th class="tr">その他費用</th><th class="tr">営業利益</th><th class="tr">営業利益率</th></tr>'+
+    rows.map(r=>tr(r,fmtMonth(r.month))).join('')+tr(tot,'合計',' class="total"');
+}
+
+function renderDaily(rows){
+  const t=$('daily-tbl');
+  if(!rows.length){t.innerHTML='';return;}
+  t.innerHTML='<tr><th>月</th><th class="tr">営業日数</th><th class="tr">1日売上</th><th class="tr">1日粗利</th><th class="tr">1日営業利益</th></tr>'+
+    rows.map(r=>{
+      const d=r.days;
+      const f=v=>d?yen(v/d):'<span class="muted">-</span>';
+      return `<tr><td>${fmtMonth(r.month)}</td><td class="tr"><input type="number" min="0" data-day="${r.month}" value="${settings.days[r.month]??''}" placeholder="${r.autoDays??'入力'}"> 日</td>
+        <td class="tr">${f(r.sales)}</td><td class="tr ${cls(r.gross)}">${f(r.gross)}</td><td class="tr ${cls(r.op)}">${f(r.op)}</td></tr>`;
+    }).join('');
+  t.querySelectorAll('input[data-day]').forEach(i=>i.addEventListener('change',()=>{
+    if(i.value==='')delete settings.days[i.dataset.day];else settings.days[i.dataset.day]=num(i.value);
+    saveSettings();render();
+  }));
+}
+
+function renderBep(rows){
+  const k=$('bep-kpis'),note=$('bep-note');
+  const valid=rows.filter(r=>r.sales>0);
+  if(!valid.length){k.innerHTML='<div class="muted">売上のある月がありません。</div>';note.textContent='';return;}
+  const basis=$('bep-basis').value,laborVar=$('bep-labor').value==='variable';
+  const n={last:1,avg3:3,avg6:6,all:valid.length}[basis];
+  const use=valid.slice(-n);
+  const avg=key=>use.reduce((s,r)=>s+r[key],0)/use.length;
+  const sales=avg('sales'),cogs=avg('cogs'),labor=avg('labor'),rent=avg('rent'),other=avg('other');
+  const variable=cogs+(laborVar?labor:0);
+  const fixed=rent+other+(laborVar?0:labor);
+  const vRate=variable/sales;
+  const bep=vRate<1?fixed/(1-vRate):Infinity;
+  const diff=sales-bep;
+  const daysArr=use.map(r=>r.days).filter(Boolean);
+  const avgDays=daysArr.length?daysArr.reduce((a,b)=>a+b,0)/daysArr.length:null;
+  const kpi=(l,v,s='',c='')=>`<div class="kpi"><div class="l">${l}</div><div class="v ${c}">${v}</div>${s?`<div class="s">${s}</div>`:''}</div>`;
+  k.innerHTML=
+    kpi('固定費合計（月次）',yen(fixed),`賃料 ${yen(rent)} / その他 ${yen(other)}`+(laborVar?'':` / 人件費 ${yen(labor)}`))+
+    kpi('変動費率',pct(vRate),laborVar?`(原価 ${yen(cogs)} + 人件費 ${yen(labor)}) ÷ 売上`:`原価 ${yen(cogs)} ÷ 売上 ${yen(sales)}`)+
+    kpi('損益分岐点売上高（月）',isFinite(bep)?yen(bep):'算出不可',avgDays&&isFinite(bep)?`1日あたり ${yen(bep/avgDays)}（平均${avgDays.toFixed(1)}日）`:'')+
+    kpi('現在の売上（月）',yen(sales),avgDays?`1日あたり ${yen(sales/avgDays)}`:'')+
+    kpi('損益分岐点との差額',isFinite(bep)?(diff>=0?'+':'')+yen(diff):'-',isFinite(bep)?(diff>=0?'分岐点を上回っています（安全余裕率 '+pct(diff/sales)+'）':'分岐点まであと '+yen(-diff)+' 不足'):'',diff>=0?'green':'red');
+  note.innerHTML=`基準: ${use.map(r=>fmtMonth(r.month)).join('・')} の平均。損益分岐点売上高 = 固定費 ÷ (1 − 変動費率)。`+
+    (laborVar?'':'<br>人件費が歩合給中心の場合は「変動費として扱う」に切り替えると実態に近くなります。');
+}
+$('bep-basis').addEventListener('change',()=>raw&&render());
+$('bep-labor').addEventListener('change',()=>raw&&render());
+</script>
+</body>
+</html>

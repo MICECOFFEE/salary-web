@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>最低保証 試算</title>
+<style>
+:root{--bg:#f6f4f1;--surface:#fff;--surface2:#f1ede8;--border:#e2dcd4;--text:#2b2621;--text2:#6b625a;--text3:#9a9087;--accent:#7a4a24;--red:#c0392b;--green:#2e7d4f;}
+*{box-sizing:border-box;}
+body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP","Yu Gothic",sans-serif;font-size:13px;}
+.wrap{max-width:1100px;margin:0 auto;padding:20px 16px 60px;}
+h1{font-size:20px;margin:0 0 4px;}
+.sub{color:var(--text2);margin-bottom:16px;}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px;}
+.card-title{font-weight:700;font-size:14px;margin-bottom:10px;}
+.btn{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--border);background:#fff;color:var(--text);border-radius:8px;padding:9px 14px;font-size:13px;cursor:pointer;}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:#fff;}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;}
+label{font-size:11px;color:var(--text2);display:block;margin-bottom:3px;}
+input[type=number],input[type=text]{border:1px solid var(--border);border-radius:6px;padding:7px 9px;font-size:13px;width:120px;}
+input[type=text]{width:420px;max-width:100%;}
+.err{background:#fdecea;color:var(--red);border-radius:8px;padding:10px;margin-bottom:12px;display:none;white-space:pre-wrap;}
+.info{background:#eef5ff;color:#244a7a;border-radius:8px;padding:10px;margin-bottom:12px;}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;}
+.kpi{background:var(--surface2);border-radius:8px;padding:12px;}
+.kpi .l{font-size:11px;color:var(--text2);}
+.kpi .v{font-size:20px;font-weight:700;margin-top:4px;}
+.kpi .v.red{color:var(--red);}
+.tbl-wrap{overflow-x:auto;}
+table{border-collapse:collapse;width:100%;min-width:640px;}
+th,td{padding:7px 9px;border-bottom:1px solid var(--border);text-align:left;white-space:nowrap;}
+th{background:var(--surface2);font-size:11px;color:var(--text2);font-weight:600;}
+.tr{text-align:right;}
+.bold{font-weight:700;}
+.red{color:var(--red);}
+.muted{color:var(--text3);}
+tr.total td{background:#faf6f1;font-weight:700;}
+details{margin-top:6px;}
+summary{cursor:pointer;color:var(--accent);font-size:12px;}
+.tag{display:inline-block;background:var(--surface2);border-radius:4px;padding:2px 6px;margin:2px;font-size:11px;}
+#app{display:none;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>最低保証 試算（歩合20% vs 最低保証10,000円）</h1>
+  <div class="sub">対象: 倉遥香・乙武優吾・姫野隼・高垣森知 ／ データ: salary_users/{uid}/data/main の records（全月）</div>
+
+  <div class="err" id="err"></div>
+
+  <div class="card" id="login-card">
+    <div class="card-title">ログイン</div>
+    <p class="muted" style="margin-top:0;">給与計算アプリと同じGoogleアカウントでログインしてください。</p>
+    <button class="btn" id="google-login-btn">
+      <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" style="width:18px;height:18px;" alt=""/>
+      Googleでログイン
+    </button>
+  </div>
+
+  <div id="app">
+    <div class="card">
+      <div class="row" style="justify-content:space-between;">
+        <div><span class="muted">ログイン中:</span> <span id="user-email"></span> <span class="muted" id="rec-count"></span></div>
+        <div class="row">
+          <button class="btn" id="reload-btn">再取得</button>
+          <button class="btn" id="logout-btn">ログアウト</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">試算条件</div>
+      <div class="row">
+        <div><label>歩合率（%）</label><input type="number" id="cfg-rate" value="20" min="0" step="1"/></div>
+        <div><label>最低保証額（円/日）</label><input type="number" id="cfg-min" value="10000" min="0" step="500"/></div>
+        <div><label>対象スタッフ（カンマ区切り・部分一致）</label><input type="text" id="cfg-names" value="倉遥香,乙武優吾,姫野隼,高垣森知"/></div>
+        <div style="padding-bottom:6px;"><label style="display:inline;"><input type="checkbox" id="cfg-skip-zero"/> 売上0円の日を除外</label></div>
+        <button class="btn btn-primary" id="calc-btn">再計算</button>
+      </div>
+      <div class="muted" style="margin-top:10px;font-size:11px;">
+        計算方法: スタッフ×日付ごとに売上を合算し、通常給与 = 売上×歩合率（四捨五入）。その日の通常給与が最低保証額を下回る場合に最低保証額を支給したものとして差額を計上します。
+      </div>
+      <div id="matched" style="margin-top:10px;"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">全月・全スタッフ合計</div>
+      <div class="kpis" id="kpis"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">スタッフ別 合計（全月）</div>
+      <div class="tbl-wrap" id="staff-total"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">月別 合計</div>
+      <div class="tbl-wrap" id="month-total"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">月別・スタッフ別 明細</div>
+      <div id="month-staff"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ---- 計算ロジック（Firebase非依存） ---- */
+function normName(s){return String(s||'').replace(/[\s　・･]/g,'');}
+
+// レコードのスタッフ名を対象名にマッチさせる（部分一致・空白無視）
+function matchTarget(staffName,targets){
+  const n=normName(staffName);
+  if(!n)return null;
+  for(const t of targets){
+    const tn=normName(t);
+    if(!tn)continue;
+    if(n.includes(tn)||(n.length>=2&&tn.includes(n)))return t;
+  }
+  return null;
+}
+
+function simulate(records,opt){
+  const rate=opt.rate/100,min=opt.min;
+  // 対象レコードを スタッフ(対象名)×日付 で集約
+  const days=new Map(); // key: target|date
+  const matchedRaw={}; // target -> Set(raw names)
+  for(const r of records){
+    const t=matchTarget(r.staffName,opt.targets);
+    if(!t)continue;
+    (matchedRaw[t]=matchedRaw[t]||new Set()).add(r.staffName);
+    const date=r.date||'';
+    const month=r.month||date.slice(0,7)||'不明';
+    const key=t+'|'+(date||('id:'+r.id));
+    if(!days.has(key))days.set(key,{staff:t,month,date,sales:0,recs:0});
+    const d=days.get(key);
+    d.sales+=Number(r.salesAmount)||0;
+    d.recs++;
+  }
+  const rows=[];
+  for(const d of days.values()){
+    if(opt.skipZero&&d.sales===0)continue;
+    const normal=Math.round(d.sales*rate);
+    const guaranteed=Math.max(normal,min);
+    rows.push({...d,normal,guaranteed,diff:guaranteed-normal,triggered:normal<min});
+  }
+  rows.sort((a,b)=>a.month.localeCompare(b.month)||a.staff.localeCompare(b.staff)||a.date.localeCompare(b.date));
+  return{rows,matchedRaw};
+}
+
+function agg(rows){
+  const o={days:0,sales:0,normal:0,guaranteed:0,diff:0,trig:0};
+  for(const r of rows){o.days++;o.sales+=r.sales;o.normal+=r.normal;o.guaranteed+=r.guaranteed;o.diff+=r.diff;if(r.triggered)o.trig++;}
+  return o;
+}
+function groupBy(rows,fn){const m=new Map();for(const r of rows){const k=fn(r);if(!m.has(k))m.set(k,[]);m.get(k).push(r);}return m;}
+</script>
+
+<script type="module">
+import{initializeApp}from'https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js';
+import{getAuth,signOut,onAuthStateChanged,GoogleAuthProvider,signInWithPopup}from'https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js';
+import{getFirestore,doc,getDoc}from'https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js';
+
+const FB={apiKey:"AIzaSyCNxDr8wqq-dIfI7ns9mZ6GySQkP0qAN1I",authDomain:"shift-app-920a1.firebaseapp.com",projectId:"shift-app-920a1",storageBucket:"shift-app-920a1.firebasestorage.app",messagingSenderId:"393055910720",appId:"1:393055910720:web:97b30c30b3f3b85ba758a5"};
+const app=initializeApp(FB);
+const auth=getAuth(app);
+const db=getFirestore(app);
+
+let records=[];
+const $=id=>document.getElementById(id);
+const yen=n=>'¥'+Math.round(n).toLocaleString('ja-JP');
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function showErr(msg){const e=$('err');e.textContent=msg;e.style.display=msg?'block':'none';}
+
+onAuthStateChanged(auth,u=>{
+  if(u){
+    $('login-card').style.display='none';
+    $('app').style.display='block';
+    $('user-email').textContent=u.email;
+    loadRecords(u.uid);
+  }else{
+    $('login-card').style.display='block';
+    $('app').style.display='none';
+  }
+});
+
+$('google-login-btn').addEventListener('click',async()=>{
+  showErr('');
+  try{await signInWithPopup(auth,new GoogleAuthProvider());}
+  catch(e){showErr('Googleログイン失敗: '+e.message);}
+});
+$('logout-btn').addEventListener('click',()=>signOut(auth));
+$('reload-btn').addEventListener('click',()=>auth.currentUser&&loadRecords(auth.currentUser.uid));
+$('calc-btn').addEventListener('click',render);
+
+async function loadRecords(uid){
+  showErr('');
+  $('rec-count').textContent='（読み込み中…）';
+  try{
+    const snap=await getDoc(doc(db,`salary_users/${uid}/data/main`));
+    if(!snap.exists()){records=[];showErr('salary_users/'+uid+'/data/main が見つかりません。給与計算アプリと同じアカウントでログインしているか確認してください。');}
+    else records=Array.isArray(snap.data().records)?snap.data().records:[];
+  }catch(e){records=[];showErr('Firestore読み込み失敗: '+e.message);}
+  $('rec-count').textContent=`（records ${records.length}件）`;
+  render();
+}
+
+function render(){
+  const opt={
+    rate:Number($('cfg-rate').value)||0,
+    min:Number($('cfg-min').value)||0,
+    targets:$('cfg-names').value.split(/[,、，]/).map(s=>s.trim()).filter(Boolean),
+    skipZero:$('cfg-skip-zero').checked
+  };
+  const{rows,matchedRaw}=simulate(records,opt);
+
+  // マッチしたスタッフ名
+  $('matched').innerHTML='<span class="muted" style="font-size:11px;">一致したスタッフ名: </span>'+opt.targets.map(t=>{
+    const s=matchedRaw[t];
+    return `<span class="tag">${esc(t)} → ${s?[...s].map(esc).join(' / '):'<span class="red">該当なし</span>'}</span>`;
+  }).join('');
+
+  // KPI
+  const all=agg(rows);
+  const months=[...new Set(rows.map(r=>r.month))];
+  $('kpis').innerHTML=[
+    ['通常給与合計（売上×'+opt.rate+'%）',yen(all.normal)],
+    ['最低保証適用後 給与合計',yen(all.guaranteed)],
+    ['差額（会社負担増）',yen(all.diff),'red'],
+    ['最低保証 発動日数',all.trig+'日 / '+all.days+'日'],
+    ['対象月数',months.length+'ヶ月'+(months.length?`（${months[0]}〜${months[months.length-1]}）`:'')],
+    ['月平均 負担増',months.length?yen(all.diff/months.length):'-'],
+  ].map(([l,v,c])=>`<div class="kpi"><div class="l">${l}</div><div class="v ${c||''}">${v}</div></div>`).join('');
+
+  const head=first=>`<thead><tr><th>${first}</th><th class="tr">勤務日数</th><th class="tr">売上合計</th><th class="tr">通常給与合計</th><th class="tr">最低保証適用後</th><th class="tr">差額（負担増）</th><th class="tr">発動日数</th></tr></thead>`;
+  const line=(label,a,cls='')=>`<tr class="${cls}"><td>${label}</td><td class="tr">${a.days}日</td><td class="tr">${yen(a.sales)}</td><td class="tr">${yen(a.normal)}</td><td class="tr">${yen(a.guaranteed)}</td><td class="tr bold ${a.diff?'red':''}">${yen(a.diff)}</td><td class="tr">${a.trig}日</td></tr>`;
+
+  // スタッフ別合計
+  const byStaff=groupBy(rows,r=>r.staff);
+  $('staff-total').innerHTML=`<table>${head('スタッフ')}<tbody>${opt.targets.map(t=>line(esc(t),agg(byStaff.get(t)||[]))).join('')}${line('合計',all,'total')}</tbody></table>`;
+
+  // 月別合計
+  const byMonth=groupBy(rows,r=>r.month);
+  $('month-total').innerHTML=rows.length?`<table>${head('月')}<tbody>${[...byMonth].map(([m,rs])=>line(esc(m),agg(rs))).join('')}${line('合計',all,'total')}</tbody></table>`:'<div class="muted">対象データがありません。</div>';
+
+  // 月別・スタッフ別明細
+  $('month-staff').innerHTML=[...byMonth].map(([m,rs])=>{
+    const bs=groupBy(rs,r=>r.staff);
+    const body=[...bs].map(([s,srs])=>{
+      const a=agg(srs);
+      const trig=srs.filter(r=>r.triggered);
+      const det=trig.length?`<details><summary>発動日 ${trig.length}件を表示</summary><table style="min-width:0;margin:4px 0;"><thead><tr><th>日付</th><th class="tr">売上</th><th class="tr">通常給与</th><th class="tr">保証後</th><th class="tr">差額</th></tr></thead><tbody>${trig.map(r=>`<tr><td>${esc(r.date)}${r.recs>1?` <span class="muted">(${r.recs}件合算)</span>`:''}</td><td class="tr">${yen(r.sales)}</td><td class="tr">${yen(r.normal)}</td><td class="tr">${yen(r.guaranteed)}</td><td class="tr red">${yen(r.diff)}</td></tr>`).join('')}</tbody></table></details>`:'';
+      return line(esc(s)+det,a);
+    }).join('');
+    return `<h3 style="font-size:14px;margin:16px 0 6px;">${esc(m)}</h3><div class="tbl-wrap"><table>${head('スタッフ')}<tbody>${body}${line('月合計',agg(rs),'total')}</tbody></table></div>`;
+  }).join('')||'<div class="muted">対象データがありません。</div>';
+}
+</script>
+</body>
+</html>
