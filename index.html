@@ -158,7 +158,7 @@ tfoot td{background:var(--surface2) !important;font-weight:700;}
   <div class="sidebar">
     <div class="logo">
       <h1>💰 給与計算<br>管理システム</h1>
-      <p>100g COFFEE <span style="font-size:9px;opacity:.5;">v1.10</span></p>
+      <p>100g COFFEE <span style="font-size:9px;opacity:.5;">v1.11</span></p>
     </div>
     <nav class="nav" id="sidebar-nav">
       <div class="nav-item active" data-page="dashboard"><span class="nav-icon">📊</span>ダッシュボード</div>
@@ -1689,7 +1689,11 @@ function buildDetailOnlyHtml(name,month){
   let out='';
   tmp.querySelectorAll('div[style*="max-width:780px"]').forEach(s=>{
     const h=s.querySelector('[style*="font-size:16px"],[style*="font-size:13px"]');
-    if(h)out+=`<h3>${esc(h.textContent)}</h3>`;
+    if(h){
+      // 明細のみPDFでは「請求金額」→「合計金額」。全角スペースで区切った塊ごとに折り返し禁止で並べる
+      const parts=h.textContent.trim().replace('請求金額','合計金額').split(/\u3000+/).filter(Boolean);
+      out+='<h3 class="pdf-head">'+parts.map(t=>`<span>${esc(t.trim())}</span>`).join('')+'</h3>';
+    }
     s.querySelectorAll('table').forEach(t=>{out+=t.outerHTML;});
     out+='<br>';
   });
@@ -1711,6 +1715,9 @@ async function makeDetailPdfBlob(name,month){
     '#detail-pdf-root tfoot td{background:transparent!important;}'+
     '#detail-pdf-root .tr{text-align:right;}'+
     '#detail-pdf-root h3{font-size:13px;margin:12px 0 6px;}'+
+    // 見出し：大きめ・太字・1行。letter-spacing を僅かに付けると html2canvas が1文字ずつ描画し、全角括弧の重なりが出ない
+    '#detail-pdf-root h3.pdf-head{display:flex;flex-wrap:nowrap;align-items:baseline;gap:18px;font-size:18px;font-weight:700;letter-spacing:0.02em;white-space:nowrap;margin:4px 0 10px;}'+
+    '#detail-pdf-root h3.pdf-head span{white-space:nowrap;}'+
     '</style>'+body;
   try{await document.fonts?.ready;}catch(e){}
   return html2pdf().set({
