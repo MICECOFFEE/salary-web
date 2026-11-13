@@ -158,7 +158,7 @@ tfoot td{background:var(--surface2) !important;font-weight:700;}
   <div class="sidebar">
     <div class="logo">
       <h1>💰 給与計算<br>管理システム</h1>
-      <p>100g COFFEE <span style="font-size:9px;opacity:.5;">v1.9</span></p>
+      <p>100g COFFEE <span style="font-size:9px;opacity:.5;">v1.10</span></p>
     </div>
     <nav class="nav" id="sidebar-nav">
       <div class="nav-item active" data-page="dashboard"><span class="nav-icon">📊</span>ダッシュボード</div>
@@ -1280,13 +1280,24 @@ pages.documents=function(el){
       <div class="btn-group mt8">
         <button class="btn btn-primary" id="gen-auto-btn">📄 書類を作成</button>
         <button class="btn btn-blue" id="gen-all-btn">🖨️ 一括印刷</button>
+        <button class="btn btn-amber" id="pdf-dl-btn" title="選択したスタッフの明細のみをPDFで保存（1名ならPDF、複数ならZIP）">📥 明細のみPDFをダウンロード</button>
       </div>
+      <div id="doc-pdf-list" style="margin-top:10px;"></div>
     </div>
     <div id="doc-area"></div>`;
 
   updateDocStaff(preset.name);
   el.querySelector('#gen-auto-btn').addEventListener('click',generateAutoDoc);
   el.querySelector('#gen-all-btn').addEventListener('click',generateAllDocs);
+  el.querySelector('#pdf-dl-btn').addEventListener('click',e=>{
+    const month=document.getElementById('doc-month').value;
+    const checked=[...document.querySelectorAll('input[name="doc-staff-cb"]:checked')].map(cb=>cb.value);
+    downloadDetailPdfs(checked,month,e.currentTarget);
+  });
+  el.querySelector('#doc-pdf-list').addEventListener('click',e=>{
+    const b=e.target.closest('button[data-pdf-name]');
+    if(b)downloadDetailPdfs([b.dataset.pdfName],document.getElementById('doc-month').value,b);
+  });
 };
 
 window.updateDocStaff=function(presetName){
@@ -1303,7 +1314,14 @@ window.updateDocStaff=function(presetName){
       <input type="checkbox" name="doc-staff-cb" value="${esc(name)}" ${isChecked?'checked':''}/>
       <span>${esc(name)}</span><span class="badge ${cls}">${label}</span></label>`;
   }).join('');
+  renderDocPdfList(staffInMonth);
 };
+function renderDocPdfList(names){
+  const el=document.getElementById('doc-pdf-list');
+  if(!el)return;
+  el.innerHTML=names.length?'<div style="font-size:11px;color:var(--text3);margin-bottom:4px;">明細のみPDF（1名ずつ）</div><div style="display:flex;flex-wrap:wrap;gap:6px;">'+
+    names.map(n=>`<button class="btn btn-outline btn-sm" data-pdf-name="${esc(n)}">📥 ${esc(n)}</button>`).join('')+'</div>':'';
+}
 
 function generateAutoDoc(){
   const month=document.getElementById('doc-month').value;
@@ -1321,9 +1339,11 @@ function generateAllDocs(){
     const recs=salaryDb.records.filter(r=>r.month===month&&r.staffName===name);
     return recs.length?buildDocHtml(name,month,payDate,getDocType(name),recs):'';
   }).join('<div style="page-break-after:always;height:20px;"></div>');
+  window._docShown={names:checked,month};
   document.getElementById('doc-area').innerHTML=html+
     '<div class="btn-group mt12 no-print" style="max-width:780px;margin:12px auto 0;">'+
     '<button class="btn btn-primary btn-lg" onclick="window.print()">🖨️ 請求書印刷</button>'+'<button class="btn btn-amber btn-lg" onclick="printDetailOnly()">📋 明細のみ印刷</button>'+
+    '<button class="btn btn-amber btn-lg" onclick="downloadShownDetailPdfs(this)">📥 明細のみPDF</button>'+
     '<button class="btn btn-outline" onclick="document.getElementById(\'doc-area\').innerHTML=\'\'">閉じる</button></div>';
 }
 function getDocType(name){
@@ -1334,10 +1354,12 @@ function getDocType(name){
 function generateDocFor(name,month,payDate,type){
   const recs=salaryDb.records.filter(r=>r.month===month&&r.staffName===name);
   if(!recs.length){alert('データが見つかりません');return;}
+  window._docShown={names:[name],month};
   document.getElementById('doc-area').innerHTML=
     buildDocHtml(name,month,payDate,type,recs)+
     '<div class="btn-group mt12 no-print" style="max-width:780px;margin:12px auto 0;">'+
     '<button class="btn btn-primary btn-lg" onclick="window.print()">🖨️ 請求書印刷</button>'+'<button class="btn btn-amber btn-lg" onclick="printDetailOnly()">📋 明細のみ印刷</button>'+
+    '<button class="btn btn-amber btn-lg" onclick="downloadShownDetailPdfs(this)">📥 明細のみPDF</button>'+
     '<button class="btn btn-outline" onclick="document.getElementById(\'doc-area\').innerHTML=\'\'">閉じる</button></div>';
 }
 function buildDocHtml(staffName,month,payDate,type,recs){
@@ -1636,6 +1658,111 @@ window.printDetailOnly=function(){
   iframe.contentWindow.focus();
   iframe.contentWindow.print();
   setTimeout(()=>iframe.remove(),2000);
+};
+
+
+/* ---- 明細のみPDFを直接ダウンロード（印刷ダイアログを使わない） ----
+   内容は「明細のみ印刷」と同じ（見出し1行＋明細テーブル）。請求書見出し・請求先・振込先は含めない。 */
+const PDF_LIBS={html2pdf:'lib/html2pdf.bundle.min.js',JSZip:'lib/jszip.min.js'};
+function loadLib(name){
+  if(window[name])return Promise.resolve(window[name]);
+  return new Promise((res,rej)=>{
+    const sc=document.createElement('script');
+    sc.src=PDF_LIBS[name];
+    sc.onload=()=>window[name]?res(window[name]):rej(new Error(name+' の読み込みに失敗'));
+    sc.onerror=()=>rej(new Error(name+' の読み込みに失敗'));
+    document.head.appendChild(sc);
+  });
+}
+function pdfYm(month){
+  const p=String(month||'').match(/^(\d{4})[\/\-](\d{1,2})$/);
+  return p?`${p[1]}年${Number(p[2])}月`:String(month||'');
+}
+function safeFileName(s){return String(s).replace(/[\s　]/g,'').replace(/[\\\/:*?"<>|]/g,'_');}
+function detailPdfFileName(name,month){return `${safeFileName(name)}明細${pdfYm(month)}.pdf`;}
+// printDetailOnly と同じ抽出ルールで、明細のみのHTMLを作る
+function buildDetailOnlyHtml(name,month){
+  const recs=salaryDb.records.filter(r=>r.month===month&&r.staffName===name);
+  if(!recs.length)return '';
+  const tmp=document.createElement('div');
+  tmp.innerHTML=buildDocHtml(name,month,'',getDocType(name),recs);
+  let out='';
+  tmp.querySelectorAll('div[style*="max-width:780px"]').forEach(s=>{
+    const h=s.querySelector('[style*="font-size:16px"],[style*="font-size:13px"]');
+    if(h)out+=`<h3>${esc(h.textContent)}</h3>`;
+    s.querySelectorAll('table').forEach(t=>{out+=t.outerHTML;});
+    out+='<br>';
+  });
+  return out;
+}
+async function makeDetailPdfBlob(name,month){
+  const body=buildDetailOnlyHtml(name,month);
+  if(!body)return null;
+  const wrap=document.createElement('div');
+  wrap.id='detail-pdf-root';
+  // アプリ本体のCSSが混ざらないよう id で打ち消し、印刷用iframeと同じ見た目にする
+  wrap.innerHTML='<style>'+
+    '#detail-pdf-root,#detail-pdf-root *{all:revert;}'+
+    '#detail-pdf-root style{display:none;}'+
+    '#detail-pdf-root{display:flow-root;width:718px;background:#fff;color:#000;font-family:"Noto Sans JP",sans-serif;font-size:11px;}'+
+    '#detail-pdf-root table{width:100%;border-collapse:collapse;}'+
+    '#detail-pdf-root th,#detail-pdf-root td{padding:5px 7px;border:1px solid #ddd;text-align:left;}'+
+    '#detail-pdf-root th{background:#f5f5f5;font-weight:500;}'+
+    '#detail-pdf-root tfoot td{background:transparent!important;}'+
+    '#detail-pdf-root .tr{text-align:right;}'+
+    '#detail-pdf-root h3{font-size:13px;margin:12px 0 6px;}'+
+    '</style>'+body;
+  try{await document.fonts?.ready;}catch(e){}
+  return html2pdf().set({
+    margin:10,
+    filename:detailPdfFileName(name,month),
+    image:{type:'jpeg',quality:0.95},
+    html2canvas:{scale:2,backgroundColor:'#ffffff',useCORS:true},
+    jsPDF:{unit:'mm',format:'a4',orientation:'portrait'},
+    pagebreak:{mode:['css','legacy'],avoid:['tr','h3']}
+  }).from(wrap).outputPdf('blob');
+}
+function triggerDownload(blob,filename){
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download=filename;a.style.display='none';
+  document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),30000);
+}
+// names: 1名ならPDFを1つ、複数ならZIP（明細YYYY年M月.zip）でダウンロード
+window.downloadDetailPdfs=async function(names,month,btn){
+  names=(names||[]).filter(n=>salaryDb.records.some(r=>r.month===month&&r.staffName===n));
+  if(!names.length){alert('スタッフを選択してください');return;}
+  const label=btn?btn.innerHTML:'';
+  if(btn){btn.disabled=true;btn.innerHTML='⏳ PDF作成中…';}
+  try{
+    await loadLib('html2pdf');
+    if(names.length===1){
+      const blob=await makeDetailPdfBlob(names[0],month);
+      triggerDownload(blob,detailPdfFileName(names[0],month));
+    }else{
+      await loadLib('JSZip');
+      const zip=new JSZip();
+      for(let i=0;i<names.length;i++){
+        if(btn)btn.innerHTML=`⏳ PDF作成中… ${i+1}/${names.length}`;
+        const blob=await makeDetailPdfBlob(names[i],month);
+        if(blob)zip.file(detailPdfFileName(names[i],month),blob);
+      }
+      const zipBlob=await zip.generateAsync({type:'blob'});
+      triggerDownload(zipBlob,`明細${pdfYm(month)}.zip`);
+    }
+    showToast(names.length===1?'明細PDFをダウンロードしました':`明細PDF ${names.length}件をZIPでダウンロードしました`);
+  }catch(e){
+    console.error(e);
+    showToast('PDFの作成に失敗しました',true);
+  }finally{
+    if(btn){btn.disabled=false;btn.innerHTML=label;}
+  }
+};
+window.downloadShownDetailPdfs=function(btn){
+  const d=window._docShown;
+  if(!d){alert('先に書類を作成してください');return;}
+  downloadDetailPdfs(d.names,d.month,btn);
 };
 
 window.closeModal=function(){document.getElementById('modal').style.display='none';};
